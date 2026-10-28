@@ -18,7 +18,7 @@ function toast(message) {
   toast.timer = setTimeout(() => $('#toast').hidden = true,5000);
 }
 function errorText(error) {
-  if (/invalid login/i.test(error.message)) return 'Correo o contraseña incorrectos.';
+  if (/invalid login/i.test(error.message) || error.code === 'invalid_credentials') return 'Usuario, correo o contraseña incorrectos.';
   if (error.status === 401 || /JWT expired|refresh token/i.test(error.message)) return 'La sesión venció. Ingresá nuevamente en otra pestaña y reintentá; conservá esta ficha abierta.';
   if (/fetch|network|load failed/i.test(error.message)) return 'No se pudo conectar. Conservá esta ficha abierta y volvé a intentar.';
   return error.message || 'No se pudo completar la operación.';
@@ -42,7 +42,7 @@ async function refresh() {
 $('#login-form').addEventListener('submit',async event => {
   event.preventDefault(); const form = event.currentTarget; $('#login-submit').disabled = true; $('#login-error').textContent = '';
   try {
-    await db.login(form.elements.email.value.trim(),form.elements.password.value);
+    await db.login(form.elements.identity.value.trim(),form.elements.password.value);
     await enterApp(); form.reset();
   } catch (error) { $('#login-error').textContent = errorText(error); }
   finally { $('#login-submit').disabled = false; }

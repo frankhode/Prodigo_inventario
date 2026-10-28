@@ -18,11 +18,11 @@ Cada objeto recibe un identificador permanente como **P000001**, asignado por un
 
 ## Usuarios y trabajo simultáneo
 
-Acceso individual por correo y contraseña. La app no solicita tokens de GitHub ni guarda contraseñas. Las sesiones las gestiona el SDK oficial de Supabase.
+Acceso individual por **usuario o correo y contraseña**. Usuarios previstos: **aleProdigo, franProdigo y maxiProdigo**. Los nombres no distinguen mayúsculas/minúsculas. La app no solicita tokens de GitHub ni guarda contraseñas. Las sesiones las gestiona el SDK oficial de Supabase. El acceso por correo sigue disponible aunque todavía no se haya publicado la función de acceso por usuario.
 
 Todos los integrantes habilitados comparten el inventario y pueden editarlo. Se guarda el usuario creador y el último editor. La app está diseñada para tres teléfonos y puede admitir más: PostgreSQL asigna los números y serializa las ediciones de una misma ficha. Si otra persona guardó primero, se rechaza la revisión antigua y se conservan los datos en el formulario. Copialos antes de cerrar la ficha, actualizá y volvé a editar. El listado se actualiza al regresar a la app, cada minuto si está visible y sin ficha abierta, o con **Actualizar**.
 
-Los usuarios nuevos requieren habilitación explícita en `inventory_members`. Tener una cuenta Supabase Auth no alcanza para leer o modificar el inventario. No hay registro público desde la app.
+Los usuarios nuevos requieren habilitación explícita en `inventory_members`. Tener una cuenta Supabase Auth no alcanza para leer o modificar el inventario. No hay registro público desde la app. Los nombres de usuario se resuelven exclusivamente en una Edge Function: no se publica un listado que los vincule con correos.
 
 ## Configuración
 
@@ -58,6 +58,36 @@ delete from public.inventory_members where user_id = 'UUID-DE-AUTHENTICATION';
 ```
 
 Las fotos ya abiertas mediante un enlace firmado pueden seguir disponibles hasta que expire ese enlace, como máximo una hora.
+
+### 3b. Activar los nombres de usuario
+
+Después de la primera migración, ejecutar una sola vez en SQL Editor:
+
+[`supabase/migrations/202610280002_usernames.sql`](supabase/migrations/202610280002_usernames.sql)
+
+Agrega nombres únicos a las membresías existentes y vincula **franProdigo** con la cuenta de Fran ya configurada. Conserva sus contraseña, UUID y fichas. Los nombres no son contraseñas ni conceden acceso por sí solos.
+
+Para Ale y Maxi, crear sus cuentas en **Authentication → Users → Add user → Create new user** como se hizo con Fran. Cada cuenta sigue asociada a un correo dentro de Supabase; el formulario permite escribir solamente el nombre de usuario. Asignarles contraseñas desde el panel, sin escribirlas en el código, SQL ni GitHub. Copiar sus UUID y ejecutar, reemplazando los dos marcadores:
+
+```sql
+insert into public.inventory_members(user_id,display_name,username)
+values
+  ('UUID-DE-ALE','Ale','aleProdigo'),
+  ('UUID-DE-MAXI','Maxi','maxiProdigo')
+on conflict (user_id) do update
+set display_name=excluded.display_name, username=excluded.username;
+```
+
+Publicar la función **inventory-login** desde **Edge Functions → Deploy a new function → Via Editor**:
+
+1. Usar exactamente el nombre `inventory-login`.
+2. Reemplazar el ejemplo del editor con el contenido completo de [`supabase/functions/inventory-login/index.js`](supabase/functions/inventory-login/index.js). Es JavaScript compatible con el archivo `index.ts` del editor; no requiere archivos auxiliares ni imports.
+3. Publicar la función y, en su configuración, dejar **Verify JWT** desactivado: el visitante aún no tiene sesión. La función comprueba el usuario y la contraseña con Supabase Auth antes de emitir una sesión.
+4. Los secretos del proyecto se obtienen dentro del runtime de Supabase, desde `SUPABASE_SECRET_KEYS` y `SUPABASE_PUBLISHABLE_KEYS`; admite las variables anteriores como respaldo. No copiarlos al navegador ni al repositorio. No se necesita pegar una clave secreta en el código.
+
+La función acepta solicitudes del origen `https://frankhode.github.io` y de localhost:3000 para desarrollo. Para otro alojamiento, definir `INVENTORY_ALLOWED_ORIGINS` en los secretos de la función como lista de orígenes separados por coma. CORS no reemplaza la comprobación de contraseña. Los intentos de acceso se validan en Supabase Auth y se conservan sus respuestas de límite de intentos. Los usuarios desconocidos y las contraseñas incorrectas dan el mismo mensaje genérico; las respuestas no se almacenan en caché.
+
+Si se usa la CLI, `supabase/config.toml` ya declara el entrypoint y `verify_jwt = false`. Desplegar con `supabase functions deploy inventory-login --project-ref TU-PROJECT-REF`. No es necesario instalar la integración de Supabase en ChatGPT para realizar estos pasos desde el panel.
 
 ### 4. Conectar la app
 
@@ -110,7 +140,7 @@ Los cambios guardados durante un respaldo pueden requerir otro respaldo posterio
 
 ## Verificación
 
-`npm test` ejecuta el esquema SQL real en PostgreSQL embebido (PGlite), con esquemas mínimos para simular Supabase Auth y Storage. Comprueba permisos —incluso ante privilegios por defecto amplios—, secuencia central, tres usuarios, reintentos de altas, conflictos de revisión, clases y vocabularios nuevos, fotos privadas y exportaciones.
+`npm test` ejecuta las migraciones SQL reales en PostgreSQL embebido (PGlite), con esquemas mínimos para simular Supabase Auth y Storage. Comprueba permisos —incluso ante privilegios por defecto amplios—, secuencia central, tres usuarios, nombres únicos privados, reintentos de altas, conflictos de revisión, clases y vocabularios nuevos, fotos privadas y exportaciones. También prueba el manejador real de la Edge Function con respuestas HTTP controladas: resolución privada del nombre, validación de contraseña, errores genéricos, límite de intentos, CORS y límites de entrada.
 
 Esto no reemplaza una prueba en un proyecto Supabase real: quedan por comprobar autenticación alojada, políticas con Storage real, tres teléfonos concurrentes y la cámara física. La compilación incluye el SDK de Supabase y la librería ZIP localmente; no descarga código de terceros al abrir la app.
 

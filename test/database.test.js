@@ -11,7 +11,7 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
   const values = {category:'Máquina de escribir',brand:'Olivetti',model:'Lettera 22',manufacture_date:'ca. 1950',type:'Portátil',destination:'museo',notes:''};
   try {
     await db.exec(`
-      create role anon; create role authenticated;
+      create role anon; create role authenticated; create role service_role bypassrls;
       create schema auth; create schema storage;
       create table auth.users(id uuid primary key);
       create function auth.uid() returns uuid language sql stable as $$
@@ -29,6 +29,10 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
     for (const [index,user] of users.entries()) {
       await db.query('insert into auth.users values ($1)',[user]);
       if (index < 3) await db.query('insert into public.inventory_members values ($1,$2)',[user,`Persona ${index+1}`]);
+    }
+    await db.exec(await readFile(new URL('../supabase/migrations/202610280002_usernames.sql',import.meta.url),'utf8'));
+    for (const [index,username] of ['aleProdigo','franProdigo','maxiProdigo'].entries()) {
+      await db.query('update public.inventory_members set username=$1 where user_id=$2',[username,users[index]]);
     }
     async function as(user,role = 'authenticated') {
       await db.exec('reset role');
@@ -54,6 +58,17 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       assert.equal((await db.query('select * from public.inventory_terms')).rows.length,0);
       await assert.rejects(save(randomUUID(),0,values,'x'),/No tenés acceso/);
       await assert.rejects(db.query("select public.inventory_term('category','','','Intrusión')"),/permission denied/);
+    });
+    await t.test('Los tres nombres son únicos sin distinguir mayúsculas y no se publican',async () => {
+      await as(users[0]);
+      const own = (await db.query('select username from public.inventory_members')).rows;
+      assert.deepEqual(own,[{username:'aleProdigo'}]);
+      await assert.rejects(db.query("update public.inventory_members set username='maxiProdigo'"),/permission denied/);
+      await as(null,'anon');
+      await assert.rejects(db.query('select username from public.inventory_members'),/permission denied/);
+      await db.exec('reset role');
+      await assert.rejects(db.query("update public.inventory_members set username='ALEPRODIGO' where user_id=$1",[users[1]]),/duplicate key/);
+      await assert.rejects(db.query("update public.inventory_members set username='Fran Prodigo' where user_id=$1",[users[1]]),/check constraint/);
     });
     await t.test('Tres integrantes obtienen números P de seis cifras distintos',async () => {
       const codes = [];

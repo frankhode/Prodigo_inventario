@@ -24,7 +24,21 @@ export function connect(config) {
   return {
     client,
     async session() { return check(await client.auth.getSession()).session; },
-    async login(email,password) { return check(await client.auth.signInWithPassword({email,password})); },
+    async login(identity,password) {
+      const value = identity.trim();
+      if (value.includes('@')) return check(await client.auth.signInWithPassword({email:value,password}));
+      const response = await fetch(`${config.supabaseUrl}/functions/v1/inventory-login`,{
+        method:'POST',headers:{apikey:config.publishableKey,'Content-Type':'application/json'},
+        body:JSON.stringify({username:value,password})
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.status === 404) throw Error('El acceso por usuario todavía no está activado. Podés ingresar con tu correo.');
+      if (!response.ok) {
+        const error = Error(result.message || 'No se pudo completar el acceso por usuario.');
+        error.code = result.code; throw error;
+      }
+      return check(await client.auth.setSession({access_token:result.access_token,refresh_token:result.refresh_token}));
+    },
     async logout() { check(await client.auth.signOut({scope:'local'})); photoUrls.clear(); },
     async load() {
       const user = check(await client.auth.getUser()).user;
