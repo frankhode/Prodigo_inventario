@@ -1,13 +1,24 @@
 {
   "name": "prodigo-inventario",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Inventario fotográfico de Pródigo, pensado para el teléfono.",
+  "description": "Inventario fotogr\u00e1fico de Pr\u00f3digo, pensado para el tel\u00e9fono.",
   "type": "module",
-  "engines": { "node": ">=24.0.0" },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
-    "start": "node --env-file-if-exists=.env server.js",
-    "dev": "node --env-file-if-exists=.env server.js",
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build": "node scripts/build.js",
     "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.13",
+    "esbuild": "^0.28.2"
   }
 }

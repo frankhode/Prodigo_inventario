@@ -1,1 +1,1 @@
-{"name":"Pródigo · Inventario","short_name":"Pródigo","lang":"es-AR","start_url":"/","display":"standalone","background_color":"#f7f6f2","theme_color":"#252d28","icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}
+{"name": "Pr\u00f3digo \u00b7 Inventario", "short_name": "Pr\u00f3digo", "lang": "es-AR", "start_url": "./", "scope": "./", "display": "standalone", "background_color": "#f7f6f2", "theme_color": "#252d28", "icons": [{"src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}]}

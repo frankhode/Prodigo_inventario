@@ -1,92 +1,119 @@
 # Pródigo · Inventario
 
-App web en español para registrar objetos desde el teléfono. Primera versión orientada a máquinas de escribir: tomar una foto, completar unos datos y guardar la ficha en un inventario central.
+Inventario inicial de hasta unos 5.000 objetos, pensado para cargar desde el teléfono. App estática con Supabase para usuarios, metadatos y fotografías. El código queda en GitHub; las fichas y fotos quedan en Supabase.
 
-## Qué permite
+## Carga
 
-- Crear, consultar, editar y eliminar fichas con códigos automáticos (`PRO-00001`).
-- Guardar marca, modelo, fecha, tipo, destino y notas. Solo marca y destino son obligatorios.
-- Consignar fechas abiertas, aproximadas o por intervalo: `ca. 1930`, `1950–1960`, `1954`.
-- Elegir o escribir tipos nuevos; las marcas y tipos ya registrados aparecen como sugerencias.
-- Asignar el destino **Museo**, **Tienda** u **Otros**, sin preselección automática.
-- Tomar fotos con la cámara del teléfono o elegirlas de la galería. Hasta cinco fotos por objeto; la primera es la portada. Se reducen a un máximo de 1600 px y se guardan como JPEG.
-- Buscar por código, marca, modelo, fecha, tipo, notas o destino; filtrar por destino y ordenar.
-- Exportar metadatos a CSV con separador `;`, compatible con Excel. **El CSV no incluye los archivos de las fotografías ni es una copia de seguridad completa.**
-- Proteger fichas y fotos con una contraseña compartida. Las sesiones duran siete días.
-- Detectar ediciones simultáneas para evitar sobrescribir cambios de otro dispositivo.
+Seis pasos: **foto y objeto → marca → modelo → año de fabricación → tipo → destino y revisión**.
 
-Los datos se guardan en el servidor, no en el almacenamiento del navegador. La app necesita conexión con ese servidor para abrir y guardar el inventario. No incluye sincronización sin conexión.
+- Una única foto por ficha, comprimida en el teléfono a JPEG de hasta **150 KiB**, con lado mayor inicial de hasta 1.200 px. Si hace falta, reduce calidad y dimensiones para cumplir el límite. Se puede reemplazar al editar.
+- Clases iniciales: **Máquina de escribir, Fotografía y Velador**. El combo permite agregar otras.
+- Marcas propias de cada clase de objeto; modelos asociados a la marca. Ambos pueden quedar vacíos cuando no corresponden.
+- Año de fabricación de texto libre: `1930`, `ca. 1930`, `1930–1940`.
+- Tipos propios de cada clase; para máquinas de escribir: **Portátil / Escritorio**. Se pueden agregar tipos nuevos.
+- Destino obligatorio: **Museo / Tienda / Otros**, sin preselección.
+- Notas opcionales. Las opciones nuevas se incorporan al guardar la ficha y quedan disponibles para los demás usuarios.
 
-## Instalación rápida
+Cada objeto recibe un identificador permanente como **P000001**, asignado por una secuencia central de PostgreSQL. No depende de marca, clase ni destino. Admite hasta P999999; puede haber saltos por operaciones fallidas, pero no se repiten números. El UUID interno permite reintentar un alta cuya respuesta se perdió sin duplicarla.
 
-Requiere **Node.js 24 o superior**. No usa paquetes externos, servicios de pago ni una base de datos aparte. No es una aplicación PHP: no alcanza con copiarla a `htdocs` de XAMPP.
+## Usuarios y trabajo simultáneo
+
+Acceso individual por correo y contraseña. La app no solicita tokens de GitHub ni guarda contraseñas. Las sesiones las gestiona el SDK oficial de Supabase.
+
+Todos los integrantes habilitados comparten el inventario y pueden editarlo. Se guarda el usuario creador y el último editor. La app está diseñada para tres teléfonos y puede admitir más: PostgreSQL asigna los números y serializa las ediciones de una misma ficha. Si otra persona guardó primero, se rechaza la revisión antigua y se conservan los datos en el formulario. Copialos antes de cerrar la ficha, actualizá y volvé a editar. El listado se actualiza al regresar a la app, cada minuto si está visible y sin ficha abierta, o con **Actualizar**.
+
+Los usuarios nuevos requieren habilitación explícita en `inventory_members`. Tener una cuenta Supabase Auth no alcanza para leer o modificar el inventario. No hay registro público desde la app.
+
+## Configuración
+
+### 1. Crear el proyecto gratuito
+
+En [Supabase](https://supabase.com/), crear un proyecto **Free**. El uso previsto no requiere contratar un plan. Los límites del proveedor pueden cambiar: revisar su [página de precios](https://supabase.com/pricing).
+
+Con el plan actual, 5.000 fotos de 150 KiB ocupan como máximo unos 732 MiB, antes de considerar archivos huérfanos o reemplazos pendientes de limpieza. El plan incluye 1 GB de archivos, 500 MB de base y cuotas mensuales de transferencia. Un proyecto gratuito puede pausarse tras una semana de inactividad y no incluye respaldos automáticos. Hacer copias periódicas; una descarga completa de fotos también consume transferencia.
+
+### 2. Crear la base y las reglas de acceso
+
+En **SQL Editor**, ejecutar una vez el contenido de:
+
+[`supabase/migrations/202610280001_inventory.sql`](supabase/migrations/202610280001_inventory.sql)
+
+El script está pensado para un proyecto nuevo. Crea las tablas, la secuencia, el guardado transaccional y un bucket privado `inventory-photos` limitado a JPEG de 150 KiB. Habilita RLS. Los navegadores no pueden escribir directamente las tablas: usan una función que comprueba permisos, campos y revisión de la ficha.
+
+### 3. Crear y habilitar las cuentas
+
+En **Authentication → Users**, crear las cuentas por correo y contraseña, marcando el correo como confirmado si se crea manualmente. En las opciones de Authentication, desactivar nuevas altas públicas. Para recuperar acceso, la persona administradora gestiona la cuenta desde Supabase; esta versión no incluye recuperación de contraseña en la interfaz.
+
+Por cada persona, copiar su UUID de Authentication y ejecutar (reemplazando los valores del ejemplo):
+
+```sql
+insert into public.inventory_members(user_id, display_name)
+values ('UUID-DE-AUTHENTICATION', 'Nombre de la persona');
+```
+
+Para quitar acceso al inventario:
+
+```sql
+delete from public.inventory_members where user_id = 'UUID-DE-AUTHENTICATION';
+```
+
+Las fotos ya abiertas mediante un enlace firmado pueden seguir disponibles hasta que expire ese enlace, como máximo una hora.
+
+### 4. Conectar la app
+
+En el diálogo **Connect** o **Settings → API Keys**, obtener la URL del proyecto y su **publishable key** (`sb_publishable_…`). Completar `public/config.js`:
+
+```js
+globalThis.PRODIGO_CONFIG = Object.freeze({
+  supabaseUrl: 'https://TU-PROYECTO.supabase.co',
+  publishableKey: 'sb_publishable_…'
+});
+```
+
+Estos dos valores son públicos: la protección real son las sesiones y las reglas RLS. **Nunca usar `sb_secret_…` ni `service_role` en este archivo, en el navegador o en GitHub.** La aplicación rechaza esas claves. No hacen falta claves secretas para operar esta app.
+
+Hasta completar la configuración, la app muestra una pantalla de preparación, sin inventario ficticio.
+
+## Probar y publicar
+
+Requiere Node.js 22 o superior para desarrollar; el sitio publicado no necesita Node ni una computadora encendida.
 
 ```bash
-git clone https://github.com/frankhode/Prodigo_inventario.git
-cd Prodigo_inventario
+npm ci
+npm test
+npm run build
 npm start
 ```
 
-1. Abrí `http://localhost:3000` en la computadora donde lo iniciaste.
-2. La consola muestra un **código de instalación de un solo uso**. Pegalo en el formulario inicial y elegí una contraseña de al menos diez caracteres.
-3. Los siguientes accesos piden únicamente esa contraseña. Podés compartirla con las personas que carguen el inventario; todas tienen los mismos permisos.
+Abrir `http://localhost:3000`. El servidor solo entrega el contenido de `dist/`. Las fotos del teléfono necesitan un navegador que decodifique su formato; para HEIC no compatible, usar JPEG. La toma de foto real depende del navegador y debe comprobarse en cada teléfono.
 
-El código de instalación cambia si reiniciás el servidor antes de completar el primer acceso. Después de configurarlo ya no se muestra. Las contraseñas se guardan mediante scrypt con una sal aleatoria; no se guardan en texto plano.
+Para alojar gratuitamente en GitHub Pages:
 
-### Usarlo desde el teléfono
+1. Incorporar los cambios y la configuración pública a `main`.
+2. En **Settings → Pages**, seleccionar **GitHub Actions**.
+3. En **Actions**, ejecutar manualmente **Publicar en GitHub Pages** desde `main`.
+4. Abrir la URL HTTPS de Pages desde los teléfonos. Las rutas son relativas, compatibles con `/Prodigo_inventario/`.
 
-Con la computadora y el teléfono en la misma red Wi-Fi, abrí en el teléfono `http://IP-DE-LA-COMPUTADORA:3000`, por ejemplo `http://192.168.1.20:3000`. La computadora debe seguir encendida y el firewall debe permitir el puerto 3000 en la red local. `localhost` en el teléfono apunta al propio teléfono.
+El workflow solo publica por ejecución manual. No se crea un proyecto de pago ni se publica al abrir un PR. La app necesita conexión a Supabase; no incluye captura sin conexión. Se puede agregar a la pantalla de inicio, pero no es una app offline.
 
-El botón **Tomar foto** utiliza el selector de cámara del sistema (`capture="environment"`); el comportamiento depende del navegador. **Elegir fotos** permite usar la galería. Si el navegador no decodifica una imagen HEIC/HEIF, la app pide una versión JPEG, PNG o WebP.
+## Exportación y migración futura
 
-Podés agregar la página a la pantalla de inicio desde el navegador. El manifiesto ofrece apertura independiente cuando el navegador lo admite; no añade funcionamiento sin conexión.
+Las exportaciones incluyen **todo el inventario cargado**, aunque haya filtros activos:
 
-## Configuración y publicación
+- **CSV:** compatible con Excel, separador `;`. Incluye identificador, clase, marca, modelo, año, tipo, destino, notas, nombre de la foto, fechas y UUID de creador/editor. Las celdas que podrían ejecutarse como fórmulas se protegen al exportar.
+- **JSON:** conserva UUID, identificador legible, revisión, fechas, autores, vocabularios y rutas de las fotos. No incluye los archivos fotográficos.
+- **Respaldo con fotos:** ZIP con CSV, JSON y `fotos/P000001.jpg`, etc. Si no se puede descargar alguna foto, se incluye `FOTOS_FALTANTES.txt` y se informa que el respaldo está incompleto.
 
-Copiá `.env.example` como `.env` para cambiar el puerto o la carpeta de datos. `npm start` lee ese archivo automáticamente.
+En navegadores con escritura directa a disco, el respaldo se genera como un ZIP. En teléfonos y otros navegadores, se divide en partes de hasta 200 fotos para no agotar la memoria: presionar **Descargar parte…** hasta completar todas. Cada parte incluye el inventario completo en JSON/CSV; reunir las carpetas `fotos/` para recuperar todas las imágenes. Mantener la página abierta y hacer el respaldo grande preferentemente desde una computadora. Los respaldos contienen datos del inventario y deben guardarse en un lugar adecuado.
 
-| Variable | Valor inicial | Uso |
-| --- | --- | --- |
-| `HOST` | `0.0.0.0` | Interfaz de escucha. |
-| `PORT` | `3000` | Puerto del servidor. |
-| `DATA_DIR` | `./data` junto al código | Carpeta persistente para SQLite y fotos. |
-| `PUBLIC_ORIGIN` | Origen HTTP del servidor | URL externa exacta, sin barra final, cuando se usa un proxy HTTPS. |
-| `SECURE_COOKIE` | `false` | Usar `true` cuando la URL pública tiene HTTPS. |
+Los cambios guardados durante un respaldo pueden requerir otro respaldo posterior. No hay restauración automática ni importación en esta versión; el formato exportado permite desarrollar la migración al sistema formal conservando los identificadores.
 
-Para acceso por Internet, alojá el proceso Node detrás de HTTPS, configurá `PUBLIC_ORIGIN=https://tu-dominio` y `SECURE_COOKIE=true`, y asegurá un disco persistente para `DATA_DIR`. El proceso debe reiniciarse automáticamente con el sistema o el servicio de hosting. No lo publiques en un alojamiento estático ni en GitHub Pages: necesita ejecutar Node y escribir archivos. La contraseña y los datos no se suben al repositorio.
+## Verificación
 
-### Docker
+`npm test` ejecuta el esquema SQL real en PostgreSQL embebido (PGlite), con esquemas mínimos para simular Supabase Auth y Storage. Comprueba permisos —incluso ante privilegios por defecto amplios—, secuencia central, tres usuarios, reintentos de altas, conflictos de revisión, clases y vocabularios nuevos, fotos privadas y exportaciones.
 
-```bash
-docker build -t prodigo-inventario .
-docker run -d --name prodigo --restart unless-stopped \
-  -p 3000:3000 -v prodigo-data:/app/data prodigo-inventario
-docker logs prodigo
-```
+Esto no reemplaza una prueba en un proyecto Supabase real: quedan por comprobar autenticación alojada, políticas con Storage real, tres teléfonos concurrentes y la cámara física. La compilación incluye el SDK de Supabase y la librería ZIP localmente; no descarga código de terceros al abrir la app.
 
-Consultá los logs para obtener el código del primer acceso. Para publicar detrás de HTTPS, agregá las variables `PUBLIC_ORIGIN` y `SECURE_COOKIE=true` al contenedor. Conservá siempre el volumen `prodigo-data`.
+## Versión anterior
 
-## Copias de seguridad
-
-La carpeta `data/` contiene `inventory.sqlite` y `photos/`. SQLite puede mantener además archivos `inventory.sqlite-wal` y `inventory.sqlite-shm` durante la ejecución.
-
-1. Detené la aplicación (`Ctrl+C`, o `docker stop prodigo`).
-2. Copiá **toda la carpeta de datos** o respaldá el volumen Docker completo.
-3. Iniciá nuevamente la aplicación.
-
-Para restaurar, con el servidor detenido, reemplazá la carpeta de datos por la copia completa y volvé a iniciar. La copia incluye contraseña y sesiones; tratala como información privada. No respaldes solo el CSV ni copies únicamente el `.sqlite` mientras el servidor está escribiendo.
-
-Si olvidás la contraseña, una persona con acceso al servidor puede detenerlo, hacer una copia completa y borrar las filas de las tablas `settings` y `sessions` usando una herramienta SQLite. Al reiniciar aparece un nuevo código de instalación; las fichas y fotografías permanecen.
-
-## Desarrollo y verificación
-
-```bash
-npm test
-```
-
-Las pruebas usan un servidor real y una carpeta temporal: instalación, autenticación, validación, fotografías, altas y cambios, conflictos entre ediciones, exportación CSV, persistencia después de reiniciar, eliminación y cierre de sesión. No tocan el inventario de uso diario.
-
-Estructura: `server.js` sirve la API y el frontend; `public/` contiene la interfaz adaptable a teléfonos; `test/` contiene las pruebas. No hay paso de compilación.
-
-Esta primera versión utiliza una contraseña compartida y un solo inventario. No incluye cuentas individuales, permisos diferenciados, historial de cambios ni lectura automática de datos a partir de las fotos.
-
+La primera versión con Node/SQLite queda en el historial de Git, en el commit `7e49673025563f81a98cc0ebabdc8fb753881be7`. Esta versión no lee ni borra la antigua carpeta `data/`; si se usó el prototipo, conservarla antes de cambiar. La migración automática desde SQLite no está incluida.
