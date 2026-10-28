@@ -27,7 +27,7 @@ export function connect(config) {
     async login(identity,password) {
       const value = identity.trim();
       if (value.includes('@')) return check(await client.auth.signInWithPassword({email:value,password}));
-      const response = await fetch(`${config.supabaseUrl}/functions/v1/inventory-login`,{
+      const response = await fetch(`${config.supabaseUrl}/functions/v1/${config.loginFunction || 'inventory-login'}`,{
         method:'POST',headers:{apikey:config.publishableKey,'Content-Type':'application/json'},
         body:JSON.stringify({username:value,password})
       });

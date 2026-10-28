@@ -1,4 +1,4 @@
-[functions.inventory-login]
+[functions.super-responder]
 # El usuario todavía no tiene sesión. La función verifica usuario y contraseña.
 verify_jwt = false
 entrypoint = "./functions/inventory-login/index.js"

@@ -78,16 +78,16 @@ on conflict (user_id) do update
 set display_name=excluded.display_name, username=excluded.username;
 ```
 
-Publicar la función **inventory-login** desde **Edge Functions → Deploy a new function → Via Editor**:
+Publicar la función **super-responder** desde **Edge Functions → Deploy a new function → Via Editor**:
 
-1. Usar exactamente el nombre `inventory-login`.
+1. El proyecto actual la publicó con el nombre `super-responder`; conservar ese nombre. El código fuente se mantiene en la carpeta `inventory-login`.
 2. Reemplazar el ejemplo del editor con el contenido completo de [`supabase/functions/inventory-login/index.js`](supabase/functions/inventory-login/index.js). Es JavaScript compatible con el archivo `index.ts` del editor; no requiere archivos auxiliares ni imports.
 3. Publicar la función y, en su configuración, dejar **Verify JWT** desactivado: el visitante aún no tiene sesión. La función comprueba el usuario y la contraseña con Supabase Auth antes de emitir una sesión.
 4. Los secretos del proyecto se obtienen dentro del runtime de Supabase, desde `SUPABASE_SECRET_KEYS` y `SUPABASE_PUBLISHABLE_KEYS`; admite las variables anteriores como respaldo. No copiarlos al navegador ni al repositorio. No se necesita pegar una clave secreta en el código.
 
 La función acepta solicitudes del origen `https://frankhode.github.io` y de localhost:3000 para desarrollo. Para otro alojamiento, definir `INVENTORY_ALLOWED_ORIGINS` en los secretos de la función como lista de orígenes separados por coma. CORS no reemplaza la comprobación de contraseña. Los intentos de acceso se validan en Supabase Auth y se conservan sus respuestas de límite de intentos. Los usuarios desconocidos y las contraseñas incorrectas dan el mismo mensaje genérico; las respuestas no se almacenan en caché.
 
-Si se usa la CLI, `supabase/config.toml` ya declara el entrypoint y `verify_jwt = false`. Desplegar con `supabase functions deploy inventory-login --project-ref TU-PROJECT-REF`. No es necesario instalar la integración de Supabase en ChatGPT para realizar estos pasos desde el panel.
+Si se usa la CLI, `supabase/config.toml` ya declara el entrypoint y `verify_jwt = false`. Desplegar con `supabase functions deploy super-responder --project-ref TU-PROJECT-REF`. No es necesario instalar la integración de Supabase en ChatGPT para realizar estos pasos desde el panel.
 
 ### 4. Conectar la app
 
@@ -96,6 +96,7 @@ En el diálogo **Connect** o **Settings → API Keys**, obtener la URL del proye
 ```js
 globalThis.PRODIGO_CONFIG = Object.freeze({
   supabaseUrl: 'https://TU-PROYECTO.supabase.co',
+  loginFunction: 'super-responder',
   publishableKey: 'sb_publishable_…'
 });
 ```
