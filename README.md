@@ -133,10 +133,10 @@ Para alojar gratuitamente en GitHub Pages:
 
 1. Incorporar los cambios y la configuración pública a `main`.
 2. En **Settings → Pages**, seleccionar **GitHub Actions**.
-3. En **Actions**, ejecutar manualmente **Publicar en GitHub Pages** desde `main`.
+3. Cada actualización de `main` ejecuta **Publicar en GitHub Pages** automáticamente. También puede iniciarse desde **Actions → Publicar en GitHub Pages → Run workflow**, eligiendo `main`.
 4. Abrir la URL HTTPS de Pages desde los teléfonos. Las rutas son relativas, compatibles con `/Prodigo_inventario/`.
 
-El workflow solo publica por ejecución manual. No se crea un proyecto de pago ni se publica al abrir un PR. La app necesita conexión a Supabase; no incluye captura sin conexión. Se puede agregar a la pantalla de inicio, pero no es una app offline.
+El workflow publica al actualizar `main` o por ejecución manual, después de superar las pruebas y la compilación. No se crea un proyecto de pago ni se publica al abrir un PR. La app necesita conexión a Supabase; no incluye captura sin conexión. Se puede agregar a la pantalla de inicio, pero no es una app offline.
 
 ## Exportación y migración futura
 
