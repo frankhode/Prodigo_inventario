@@ -7,6 +7,7 @@ Inventario inicial de hasta unos 5.000 objetos, pensado para cargar desde el tel
 Seis pasos: **foto y objeto → marca → modelo → año de fabricación → tipo → destino y revisión**.
 
 - Una única foto por ficha, comprimida en el teléfono a JPEG de hasta **150 KiB**, con lado mayor inicial de hasta 1.200 px. Si hace falta, reduce calidad y dimensiones para cumplir el límite. Se puede reemplazar al editar.
+- **Tomar foto** abre una vista de cámara dentro de la página, solicita la trasera con video limitado a 1.280 px por lado y 15 fps, sin audio, y captura directamente al tamaño reducido. Evita abrir primero una foto de cámara de resolución completa. Requiere permitir la cámara en el navegador. La cámara se libera al capturar, cancelar u ocultar la página; también si el permiso llega después de cancelar. Como alternativas quedan la galería y **Usar cámara del teléfono**, que abre la cámara nativa y puede consumir más memoria. Las fotos de galería liberan su imagen decodificada y el canvas al terminar.
 - Clases iniciales: **Máquina de escribir, Fotografía y Velador**. El combo permite agregar otras.
 - Marcas propias de cada clase de objeto; modelos asociados a la marca. Ambos pueden quedar vacíos cuando no corresponden.
 - Año de fabricación de texto libre: `1930`, `ca. 1930`, `1930–1940`.

@@ -1,6 +1,7 @@
 import { connect } from './data.js';
 import { destinations, normalize, title, validate, csv, exportRecord, photoName } from './core.js';
-import { compressPhoto } from './photos.js';
+import { compressPhoto, compressFrame } from './photos.js';
+import { Camera, cameraError } from './camera.js';
 import { Zip, ZipPassThrough, strToU8 } from 'fflate';
 
 const $ = selector => document.querySelector(selector);
@@ -222,16 +223,48 @@ async function closeEditor() {
 $$('.close-editor').forEach(button => button.addEventListener('click',closeEditor));
 $('#editor').addEventListener('cancel',event => { event.preventDefault(); closeEditor(); });
 window.addEventListener('beforeunload',event => { if (state.dirty || state.busy) { event.preventDefault(); event.returnValue = ''; } });
-$('#camera-button').addEventListener('click',() => $('#camera-input').click());
+const camera = new Camera($('#camera-video'));
+function closeCamera() { camera.stop(); if ($('#camera-dialog').open) $('#camera-dialog').close(); }
+$('#camera-dialog').addEventListener('close',() => camera.stop());
+$('#camera-dialog').addEventListener('cancel',event => { event.preventDefault(); if (!state.busy) closeCamera(); });
+$('#cancel-camera').addEventListener('click',closeCamera);
+$('#camera-button').addEventListener('click',async () => {
+  if (state.busy || $('#camera-dialog').open) return;
+  $('#camera-message').textContent = 'Activando cámara…'; $('#camera-message').className = 'hint';
+  $('#take-photo').disabled = true; $('#camera-dialog').showModal();
+  try {
+    if (await camera.start()) {
+      $('#camera-message').textContent = 'Encuadrá el objeto y tomá la foto.'; $('#take-photo').disabled = false;
+    }
+  } catch (error) { $('#camera-message').textContent = cameraError(error); $('#camera-message').className = 'error'; }
+});
+$('#camera-gallery').addEventListener('click',() => { closeCamera(); $('#gallery-input').click(); });
+$('#native-camera').addEventListener('click',() => { closeCamera(); $('#camera-input').click(); });
+$('#take-photo').addEventListener('click',async () => {
+  if (state.busy) return;
+  busy(true); $$('#camera-dialog button').forEach(button => button.disabled = true);
+  $('#camera-message').textContent = 'Preparando foto…';
+  try {
+    const video = $('#camera-video');
+    const photo = await compressFrame(video,video.videoWidth,video.videoHeight);
+    if ($('#camera-dialog').open) { setPhoto(photo); closeCamera(); }
+  } catch (error) { $('#camera-message').textContent = errorText(error); $('#camera-message').className = 'error'; }
+  finally { busy(false); $$('#camera-dialog button').forEach(button => button.disabled = false); }
+});
+document.addEventListener('visibilitychange',() => { if (document.hidden) closeCamera(); });
+window.addEventListener('pagehide',closeCamera);
 $('#gallery-button').addEventListener('click',() => $('#gallery-input').click());
+function setPhoto(photo) {
+  if (state.photoUrl) URL.revokeObjectURL(state.photoUrl);
+  state.photo = photo; state.photoUrl = URL.createObjectURL(photo); showPhoto(state.photoUrl); state.dirty = true;
+  $('#form-error').textContent = '';
+  $('#photo-status').textContent = `Una foto · ${Math.ceil(photo.size/1024)} KB. Podés reemplazarla antes de guardar.`;
+}
 for (const input of [$('#camera-input'),$('#gallery-input')]) input.addEventListener('change',async () => {
   const file = input.files[0]; input.value = ''; if (!file) return;
   busy(true); $('#form-error').textContent = '';
   try {
-    const photo = await compressPhoto(file);
-    if (state.photoUrl) URL.revokeObjectURL(state.photoUrl);
-    state.photo = photo; state.photoUrl = URL.createObjectURL(photo); showPhoto(state.photoUrl); state.dirty = true;
-    $('#photo-status').textContent = `Una foto · ${Math.ceil(photo.size/1024)} KB. Podés reemplazarla antes de guardar.`;
+    setPhoto(await compressPhoto(file));
   } catch (error) { $('#form-error').textContent = errorText(error); }
   finally { busy(false); }
 });
