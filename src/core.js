@@ -14,7 +14,7 @@ export function validate(values) {
   return Object.fromEntries(fields.map(field => [field,values[field].trim()]));
 }
 export function csv(items) {
-  const columns = ['Identificador','Objeto','Marca','Modelo','Año de fabricación','Tipo','Destino','Notas','Foto','Alta','Modificación','Creado por','Modificado por'];
+  const columns = ['Identificador','Objeto','Marca','Modelo','Fecha','Tipo','Destino','Notas','Foto','Alta','Modificación','Creado por','Modificado por'];
   // Evitar que Excel interprete como fórmulas los valores ingresados por usuarios.
   const cell = value => '"' + String(value ?? '').replace(/^[\s\u0000-\u001f]*[=+@-]/, match => "'" + match).replaceAll('"','""') + '"';
   const rows = items.map(i => [i.code,i.category,i.brand,i.model,i.manufacture_date,i.type,destinations[i.destination],i.notes,photoName(i),i.created_at,i.updated_at,i.created_by,i.updated_by]);

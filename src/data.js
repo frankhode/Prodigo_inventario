@@ -73,6 +73,19 @@ export function connect(config) {
       if (photoPath && photoPath !== path) await client.storage.from('inventory-photos').remove([photoPath]).catch(() => {});
       return saved;
     },
+    async remove({id,revision,photoPath}) {
+      const result = await client.rpc('delete_inventory_item',{p_id:id,p_revision:revision});
+      if (result.error?.code === 'PGRST202') throw Error('La opción de borrar todavía no está habilitada. Consultá a Pródigo.');
+      const path = check(result) || photoPath;
+      photoUrls.delete(path);
+      // La foto solo se quita después del borrado confirmado; RLS impide quitar fotos vinculadas.
+      let photoCleanupFailed = false;
+      if (path) {
+        try { photoCleanupFailed = !!(await client.storage.from('inventory-photos').remove([path])).error; }
+        catch { photoCleanupFailed = true; }
+      }
+      return {photoCleanupFailed};
+    },
     async photoBlob(path) { return check(await client.storage.from('inventory-photos').download(path)); }
   };
 }

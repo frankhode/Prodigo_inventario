@@ -4,13 +4,13 @@ Inventario inicial de hasta unos 5.000 objetos, pensado para cargar desde el tel
 
 ## Carga
 
-Seis pasos: **foto y objeto → marca → modelo → año de fabricación → tipo → destino y revisión**.
+Seis pasos: **foto y objeto → marca → modelo → fecha → tipo → destino y revisión**.
 
 - Una única foto por ficha, comprimida en el teléfono a JPEG de hasta **150 KiB**, con lado mayor inicial de hasta 1.200 px. Si hace falta, reduce calidad y dimensiones para cumplir el límite. Se puede reemplazar al editar.
 - **Tomar foto** abre una vista de cámara dentro de la página, solicita la trasera con video limitado a 1.280 px por lado y 15 fps, sin audio, y captura directamente al tamaño reducido. Evita abrir primero una foto de cámara de resolución completa. Requiere permitir la cámara en el navegador. La cámara se libera al capturar, cancelar u ocultar la página; también si el permiso llega después de cancelar. Como alternativas quedan la galería y **Usar cámara del teléfono**, que abre la cámara nativa y puede consumir más memoria. Las fotos de galería liberan su imagen decodificada y el canvas al terminar.
 - Clases iniciales: **Máquina de escribir, Fotografía y Velador**. El combo permite agregar otras.
 - Marcas propias de cada clase de objeto; modelos asociados a la marca. Ambos pueden quedar vacíos cuando no corresponden.
-- Año de fabricación de texto libre: `1930`, `ca. 1930`, `1930–1940`.
+- Fecha de texto libre, de fabricación, toma u otro momento asociado al objeto: `1930`, `ca. 1930`, `15/06/1950`, `1930–1940`. La columna interna y la clave JSON conservan el nombre `manufacture_date` para mantener compatibilidad con las fichas existentes; la interfaz y el CSV muestran **Fecha**.
 - Tipos propios de cada clase; para máquinas de escribir: **Portátil / Escritorio**. Se pueden agregar tipos nuevos.
 - Destino obligatorio: **Museo / Tienda / Otros**, sin preselección.
 - Notas opcionales. Las opciones nuevas se incorporan al guardar la ficha y quedan disponibles para los demás usuarios.
@@ -160,3 +160,9 @@ Esto no reemplaza una prueba en un proyecto Supabase real: quedan por comprobar 
 ## Versión anterior
 
 La primera versión con Node/SQLite queda en el historial de Git, en el commit `7e49673025563f81a98cc0ebabdc8fb753881be7`. Esta versión no lee ni borra la antigua carpeta `data/`; si se usó el prototipo, conservarla antes de cambiar. La migración automática desde SQLite no está incluida.
+
+## Editar y borrar registros
+
+Cada tarjeta muestra **Editar ficha**. Al abrirla, se pueden modificar los datos o reemplazar la foto y terminar con **Guardar cambios**. Se conserva el identificador.
+
+Para habilitar **Borrar registro** en un proyecto existente, ejecutar una vez en SQL Editor [supabase/migrations/202610280004_delete_items.sql](supabase/migrations/202610280004_delete_items.sql). No modifica registros existentes. Los tres integrantes habilitados pueden borrar fichas de cualquier integrante; se exige confirmar el código y se rechaza el borrado si otra persona editó una revisión más reciente. El borrado es definitivo y los identificadores no se reutilizan. Los vocabularios compartidos se conservan. La foto se limpia mediante Storage después de confirmar el borrado de la ficha; si esa limpieza falla, se informa que el archivo quedó pendiente. Las copias exportadas previamente conservan sus datos.

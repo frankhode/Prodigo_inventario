@@ -31,6 +31,7 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       if (index < 3) await db.query('insert into public.inventory_members values ($1,$2)',[user,`Persona ${index+1}`]);
     }
     await db.exec(await readFile(new URL('../supabase/migrations/202610280002_usernames.sql',import.meta.url),'utf8'));
+    await db.exec(await readFile(new URL('../supabase/migrations/202610280004_delete_items.sql',import.meta.url),'utf8'));
     for (const [index,username] of ['aleProdigo','franProdigo','maxiProdigo'].entries()) {
       await db.query('update public.inventory_members set username=$1 where user_id=$2',[username,users[index]]);
     }
@@ -45,6 +46,7 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       return path;
     }
     const save = (id,revision,v,path) => db.query('select * from public.save_inventory_item($1,$2,$3::jsonb,$4)',[id,revision,JSON.stringify(v),path]);
+    const remove = (id,revision) => db.query('select public.delete_inventory_item($1,$2) as photo_path',[id,revision]);
     let first;
     await t.test('Sin sesión no se pueden leer fichas ni invocar el guardado',async () => {
       await as(null,'anon');
@@ -117,6 +119,30 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       assert.equal(removed.rows.length,0);
       const id = randomUUID(), path = await upload(users[0],id);
       assert.equal((await db.query('delete from storage.objects where name=$1 returning *',[path])).rows.length,1);
+    });
+    await t.test('El borrado exige membresía y revisión válida; impide borrar directamente las tablas',async () => {
+      await as(null,'anon'); await assert.rejects(remove(first.id,2),/permission denied/);
+      await as(users[3]); await assert.rejects(remove(first.id,2),/No tenés acceso/);
+      await as(users[0]);
+      await assert.rejects(remove(first.id,0),/revisión inválidos/);
+      await assert.rejects(remove(null,2),/revisión inválidos/);
+      await assert.rejects(db.query('delete from public.inventory_items where id=$1',[first.id]),/permission denied/);
+    });
+    await t.test('No borra una edición reciente; otro integrante puede borrar la revisión actual y limpiar su foto',async () => {
+      await as(users[2]);
+      await assert.rejects(remove(first.id,1),/Otra persona modificó/);
+      assert.equal((await db.query('select id from public.inventory_items where id=$1',[first.id])).rows.length,1);
+      assert.equal((await remove(first.id,2)).rows[0].photo_path,first.photo_path);
+      assert.equal((await db.query('select id from public.inventory_items where id=$1',[first.id])).rows.length,0);
+      assert.equal((await db.query('delete from storage.objects where name=$1 returning *',[first.photo_path])).rows.length,1);
+      assert.equal((await remove(first.id,2)).rows[0].photo_path,null);
+      await assert.rejects(save(first.id,2,values,first.photo_path),/ya no está disponible/);
+    });
+    await t.test('Los identificadores borrados no se reciclan y los vocabularios se conservan',async () => {
+      await as(users[0]); const id = randomUUID(); const path = await upload(users[0],id);
+      const saved = (await save(id,0,{...values,manufacture_date:'15/06/1950'},path)).rows[0];
+      assert.equal(saved.code,'P000005'); assert.equal(saved.manufacture_date,'15/06/1950');
+      assert.equal((await db.query("select name from public.inventory_terms where kind='brand' and name='Olivetti'")).rows.length,1);
     });
   } finally { await db.close(); }
 });

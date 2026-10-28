@@ -7,7 +7,7 @@ import { Zip, ZipPassThrough, strToU8 } from 'fflate';
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const state = {items:[],terms:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoUrl:null,dirty:false,busy:false,loading:false,user:null};
-const stepTitles = ['Foto y objeto','Marca','Modelo','Año de fabricación','Tipo','Destino y revisión'];
+const stepTitles = ['Foto y objeto','Marca','Modelo','Fecha','Tipo','Destino y revisión'];
 const config = globalThis.PRODIGO_CONFIG;
 let db;
 const inviteParams = new URLSearchParams(location.hash.slice(1));
@@ -118,14 +118,14 @@ function render() {
 }
 function card(item) {
   const button = element('button','card'); button.type = 'button';
-  button.setAttribute('aria-label',`Abrir ${item.code}, ${title(item)}`);
+  button.setAttribute('aria-label',`Editar ${item.code}, ${title(item)}`);
   const picture = element('div','card-image'), img = element('img');
   img.alt = title(item); img.loading = 'lazy'; picture.append(img);
   // Solo solicitar fotos de las tarjetas mostradas, nunca de las 5.000 fichas a la vez.
   db.photoUrl(item.photo_path).then(url => { if (button.isConnected) img.src = url; }).catch(() => { img.alt = 'Foto no disponible. Probá Actualizar.'; });
   const body = element('div','card-body');
   body.append(element('span','card-code',item.code),element('h3','',title(item)),element('p','card-meta',[item.category,item.manufacture_date,item.type].filter(Boolean).join(' · ')));
-  const bottom = element('div','card-bottom'); bottom.append(element('span',`badge ${item.destination}`,destinations[item.destination]),element('span','card-arrow','↗'));
+  const bottom = element('div','card-bottom'); bottom.append(element('span',`badge ${item.destination}`,destinations[item.destination]),element('span','card-edit','Editar ficha ↗'));
   body.append(bottom); button.append(picture,body); button.addEventListener('click',() => openEditor(item)); return button;
 }
 for (const id of ['search','sort','category-filter']) $(`#${id}`).addEventListener(id === 'search' ? 'input' : 'change',() => { state.limit = 24; render(); });
@@ -173,19 +173,21 @@ function values() {
 }
 function renderReview() {
   const v = values();
-  const rows = [['Objeto',v.category],['Marca',v.brand],['Modelo',v.model],['Año de fabricación',v.manufacture_date],['Tipo',v.type]];
+  const rows = [['Objeto',v.category],['Marca',v.brand],['Modelo',v.model],['Fecha',v.manufacture_date],['Tipo',v.type]];
   $('#review').replaceChildren(...rows.flatMap(([label,value]) => [element('dt','',label),element('dd','',value || 'Sin consignar')]));
 }
+function saveLabel() { return state.current ? 'Guardar cambios' : 'Guardar objeto'; }
 function showStep(step) {
   state.step = step; $('#form-error').textContent = '';
   $$('.wizard-step').forEach((section,index) => section.hidden = index !== step);
   $('#step-caption').textContent = `${step+1} de 6 · ${stepTitles[step]}`; $('#step-progress').value = step+1;
-  $('#previous-step').hidden = step === 0; $('#next-step').textContent = step === 5 ? 'Guardar objeto' : 'Siguiente →';
+  $('#previous-step').hidden = step === 0; $('#next-step').textContent = step === 5 ? saveLabel() : 'Siguiente →';
   if (step === 5) renderReview();
   const heading = $(`#step-title-${step}`); heading.tabIndex = -1; heading.focus({preventScroll:true}); $('#editor').scrollTop = 0;
 }
 async function openEditor(item = null) {
   state.current = item; state.draftId = item?.id || crypto.randomUUID(); state.photo = null;
+  $('#delete-item').hidden = !item;
   if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
   state.dirty = false; $('#item-form').reset();
   for (const field of combos) fillCombo(field,item?.[field] || '');
@@ -222,6 +224,26 @@ async function closeEditor() {
 }
 $$('.close-editor').forEach(button => button.addEventListener('click',closeEditor));
 $('#editor').addEventListener('cancel',event => { event.preventDefault(); closeEditor(); });
+$('#delete-item').addEventListener('click',async () => {
+  if (state.busy || !state.current) return;
+  const item = state.current;
+  $('#delete-description').textContent = `Se borrará ${item.code} · ${title(item)}, con sus datos y su foto. Esta acción no se puede deshacer. El identificador no se volverá a usar.`;
+  $('#delete-confirm').returnValue = ''; $('#delete-confirm').showModal();
+  const confirmed = await new Promise(resolve => $('#delete-confirm').addEventListener('close',() => resolve($('#delete-confirm').returnValue === 'delete'),{once:true}));
+  if (!confirmed) return;
+  busy(true); $('#form-error').textContent = '';
+  try {
+    const {photoCleanupFailed} = await db.remove({id:item.id,revision:item.revision,photoPath:item.photo_path});
+    state.items = state.items.filter(row => row.id !== item.id);
+    state.dirty = false; state.photo = null; $('#editor').close();
+    if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
+    updateCategoryFilter(); render(); toast(`${item.code} borrado.`);
+    if (photoCleanupFailed) {
+      $('#list-error').textContent = 'El registro se borró, pero no se pudo quitar su foto del almacenamiento.'; $('#list-error').hidden = false;
+    }
+  } catch (error) { $('#form-error').textContent = errorText(error); }
+  finally { busy(false); }
+});
 window.addEventListener('beforeunload',event => { if (state.dirty || state.busy) { event.preventDefault(); event.returnValue = ''; } });
 const camera = new Camera($('#camera-video'));
 function closeCamera() { camera.stop(); if ($('#camera-dialog').open) $('#camera-dialog').close(); }
@@ -289,7 +311,7 @@ $('#item-form').addEventListener('submit',async event => {
     // Recuperar vocabularios incorporados por este guardado y los demás teléfonos.
     busy(false); await refresh();
   } catch (error) { $('#form-error').textContent = errorText(error); }
-  finally { busy(false); $('#next-step').textContent = state.step === 5 ? 'Guardar objeto' : 'Siguiente →'; }
+  finally { busy(false); $('#next-step').textContent = state.step === 5 ? saveLabel() : 'Siguiente →'; }
 });
 
 function download(blob,name) {
