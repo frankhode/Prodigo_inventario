@@ -1,5 +1,5 @@
 // Configuración pública. Nunca pegar aquí una clave secreta ni service_role.
 globalThis.PRODIGO_CONFIG = Object.freeze({
-  supabaseUrl: '',
-  publishableKey: ''
+  supabaseUrl: 'https://wgtircsltokentekqgdq.supabase.co',
+  publishableKey: 'sb_publishable_IiOilYnrWkqTHhvZSLeU_w_F2WS54gi'
 });
