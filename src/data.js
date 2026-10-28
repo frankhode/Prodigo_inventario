@@ -24,6 +24,10 @@ export function connect(config) {
   return {
     client,
     async session() { return check(await client.auth.getSession()).session; },
+    async register({username,email,password,invitationCode}) {
+      return check(await client.auth.signUp({email:email.trim(),password,
+        options:{data:{username,inventory_invite:invitationCode.trim()}}}));
+    },
     async login(identity,password) {
       const value = identity.trim();
       if (value.includes('@')) return check(await client.auth.signInWithPassword({email:value,password}));

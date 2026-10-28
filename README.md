@@ -22,7 +22,7 @@ Acceso individual por **usuario o correo y contraseña**. Usuarios previstos: **
 
 Todos los integrantes habilitados comparten el inventario y pueden editarlo. Se guarda el usuario creador y el último editor. La app está diseñada para tres teléfonos y puede admitir más: PostgreSQL asigna los números y serializa las ediciones de una misma ficha. Si otra persona guardó primero, se rechaza la revisión antigua y se conservan los datos en el formulario. Copialos antes de cerrar la ficha, actualizá y volvé a editar. El listado se actualiza al regresar a la app, cada minuto si está visible y sin ficha abierta, o con **Actualizar**.
 
-Los usuarios nuevos requieren habilitación explícita en `inventory_members`. Tener una cuenta Supabase Auth no alcanza para leer o modificar el inventario. No hay registro público desde la app. Los nombres de usuario se resuelven exclusivamente en una Edge Function: no se publica un listado que los vincule con correos.
+Los usuarios nuevos requieren una membresía en `inventory_members`, creada manualmente para Fran o automáticamente al canjear las invitaciones de Ale y Maxi. Tener una cuenta Supabase Auth no alcanza para leer o modificar el inventario. No hay registro público desde la app. Los nombres de usuario se resuelven exclusivamente en una Edge Function: no se publica un listado que los vincule con correos.
 
 ## Configuración
 
@@ -42,7 +42,7 @@ El script está pensado para un proyecto nuevo. Crea las tablas, la secuencia, e
 
 ### 3. Crear y habilitar las cuentas
 
-En **Authentication → Users**, crear las cuentas por correo y contraseña, marcando el correo como confirmado si se crea manualmente. En las opciones de Authentication, desactivar nuevas altas públicas. Para recuperar acceso, la persona administradora gestiona la cuenta desde Supabase; esta versión no incluye recuperación de contraseña en la interfaz.
+En **Authentication → Users**, crear las cuentas por correo y contraseña, marcando el correo como confirmado si se crea manualmente. Mantener las altas públicas desactivadas hasta instalar la validación de invitaciones del apartado 3c. Para recuperar acceso, la persona administradora gestiona la cuenta desde Supabase; esta versión no incluye recuperación de contraseña en la interfaz.
 
 Por cada persona, copiar su UUID de Authentication y ejecutar (reemplazando los valores del ejemplo):
 
@@ -67,16 +67,7 @@ Después de la primera migración, ejecutar una sola vez en SQL Editor:
 
 Agrega nombres únicos a las membresías existentes y vincula **franProdigo** con la cuenta de Fran ya configurada. Conserva sus contraseña, UUID y fichas. Los nombres no son contraseñas ni conceden acceso por sí solos.
 
-Para Ale y Maxi, crear sus cuentas en **Authentication → Users → Add user → Create new user** como se hizo con Fran. Cada cuenta sigue asociada a un correo dentro de Supabase; el formulario permite escribir solamente el nombre de usuario. Asignarles contraseñas desde el panel, sin escribirlas en el código, SQL ni GitHub. Copiar sus UUID y ejecutar, reemplazando los dos marcadores:
-
-```sql
-insert into public.inventory_members(user_id,display_name,username)
-values
-  ('UUID-DE-ALE','Ale','aleProdigo'),
-  ('UUID-DE-MAXI','Maxi','maxiProdigo')
-on conflict (user_id) do update
-set display_name=excluded.display_name, username=excluded.username;
-```
+Ale y Maxi crearán sus cuentas desde sus enlaces de alta, con sus propios correos y contraseñas. No hace falta conocer sus correos ni crearlos desde el panel; ver **3c**. Fran conserva su cuenta existente.
 
 Publicar la función **super-responder** desde **Edge Functions → Deploy a new function → Via Editor**:
 
@@ -88,6 +79,26 @@ Publicar la función **super-responder** desde **Edge Functions → Deploy a new
 La función acepta solicitudes del origen `https://frankhode.github.io` y de localhost:3000 para desarrollo. Para otro alojamiento, definir `INVENTORY_ALLOWED_ORIGINS` en los secretos de la función como lista de orígenes separados por coma. CORS no reemplaza la comprobación de contraseña. Los intentos de acceso se validan en Supabase Auth y se conservan sus respuestas de límite de intentos. Los usuarios desconocidos y las contraseñas incorrectas dan el mismo mensaje genérico; las respuestas no se almacenan en caché.
 
 Si se usa la CLI, `supabase/config.toml` ya declara el entrypoint y `verify_jwt = false`. Desplegar con `supabase functions deploy super-responder --project-ref TU-PROJECT-REF`. No es necesario instalar la integración de Supabase en ChatGPT para realizar estos pasos desde el panel.
+
+### 3c. Primer ingreso de Ale y Maxi
+
+La app incluye **Crear mi cuenta**. Cada persona registra su correo y elige una contraseña de al menos diez caracteres. Su enlace de un solo uso ya selecciona el nombre correspondiente; no puede usar el enlace de la otra persona.
+
+1. Mantener **Allow new users to sign up** desactivado mientras se instala la validación.
+2. Ejecutar una sola vez en SQL Editor [`supabase/migrations/202610280003_self_registration.sql`](supabase/migrations/202610280003_self_registration.sql). Los resultados muestran dos filas con los enlaces de alta para **aleProdigo** y **maxiProdigo**. Guardar esos enlaces y compartir cada uno solo con la persona correspondiente, una vez publicada la app. No se necesita conocer sus correos. Los enlaces apuntan a la dirección prevista de GitHub Pages y funcionarán después de publicarla.
+3. Después de que el SQL termine correctamente, activar **Allow new users to sign up** en **Authentication → Sign In / Providers** y guardar. El registro sigue restringido por la base: cada nueva cuenta necesita una de las dos invitaciones válidas. Las cuentas sin código, con código vencido, consumido o de otro nombre se rechazan en la propia transacción de Supabase Auth.
+4. Mantener **Confirm email** desactivado si se desea el ingreso inmediato elegido para este inventario. Si se activa, cada persona deberá confirmar su correo antes de entrar.
+5. Publicar la app. Al abrir su enlace, Ale/Maxi verán el formulario de primer ingreso. Después podrán entrar con usuario o correo y contraseña, sin volver a usar el enlace.
+
+El alta usa el servicio nativo de Supabase Auth. La función `super-responder` ya publicada sigue atendiendo el login por nombre; no necesita cambios para el registro. Los triggers de la tercera migración crean automáticamente la membresía y consumen la invitación en la misma transacción. Si falla el alta, no se consume el código. No se guardan contraseñas en el SQL ni en la app. Los códigos se generan dentro del proyecto, se guardan como hashes y se quitan de los metadatos del usuario.
+
+Las invitaciones vencen a los 30 días. Para reemplazar un enlace pendiente, ejecutar desde SQL Editor:
+
+```sql
+select * from public.create_inventory_invite('aleProdigo');
+```
+
+El resultado da el nombre y el nuevo código; el anterior deja de funcionar. Puede usarse en **Crear mi cuenta**, pegando el código, o reconstruirse el enlace con `#alta=aleProdigo&codigo=CODIGO`. Repetir con `maxiProdigo` si corresponde. Una cuenta ya registrada no admite otra invitación; su contraseña se gestiona desde Authentication. Las altas desde el panel también pasan por esta validación: este proyecto está dedicado a las tres cuentas del inventario.
 
 ### 4. Conectar la app
 
@@ -141,7 +152,7 @@ Los cambios guardados durante un respaldo pueden requerir otro respaldo posterio
 
 ## Verificación
 
-`npm test` ejecuta las migraciones SQL reales en PostgreSQL embebido (PGlite), con esquemas mínimos para simular Supabase Auth y Storage. Comprueba permisos —incluso ante privilegios por defecto amplios—, secuencia central, tres usuarios, nombres únicos privados, reintentos de altas, conflictos de revisión, clases y vocabularios nuevos, fotos privadas y exportaciones. También prueba el manejador real de la Edge Function con respuestas HTTP controladas: resolución privada del nombre, validación de contraseña, errores genéricos, límite de intentos, CORS y límites de entrada.
+`npm test` ejecuta las migraciones SQL reales en PostgreSQL embebido (PGlite), con esquemas mínimos para simular Supabase Auth y Storage. Comprueba permisos —incluso ante privilegios por defecto amplios—, secuencia central, tres usuarios, nombres únicos privados, altas por invitación y su consumo atómico, reintentos de altas, conflictos de revisión, clases y vocabularios nuevos, fotos privadas y exportaciones. También prueba el manejador real de la Edge Function con respuestas HTTP controladas: resolución privada del nombre, validación de contraseña, errores genéricos, límite de intentos, CORS y límites de entrada.
 
 Esto no reemplaza una prueba en un proyecto Supabase real: quedan por comprobar autenticación alojada, políticas con Storage real, tres teléfonos concurrentes y la cámara física. La compilación incluye el SDK de Supabase y la librería ZIP localmente; no descarga código de terceros al abrir la app.
 

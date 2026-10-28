@@ -9,6 +9,10 @@ const state = {items:[],terms:[],destination:'',limit:24,current:null,draftId:nu
 const stepTitles = ['Foto y objeto','Marca','Modelo','Año de fabricación','Tipo','Destino y revisión'];
 const config = globalThis.PRODIGO_CONFIG;
 let db;
+const inviteParams = new URLSearchParams(location.hash.slice(1));
+const invitedUsername = inviteParams.get('alta');
+const invitedCode = inviteParams.get('codigo');
+let hasInvitation = ['aleProdigo','maxiProdigo'].includes(invitedUsername) && /^[a-f0-9]{32}$/.test(invitedCode || '');
 function element(tag,className,text) {
   const node = document.createElement(tag); if (className) node.className = className;
   if (text !== undefined) node.textContent = text; return node;
@@ -18,12 +22,49 @@ function toast(message) {
   toast.timer = setTimeout(() => $('#toast').hidden = true,5000);
 }
 function errorText(error) {
+  if (/user already registered/i.test(error.message)) return 'Ese correo ya tiene una cuenta. Ingresá con ella o usá otro correo para esta invitación.';
+  if (/signups not allowed|signup.*disabled/i.test(error.message)) return 'El alta de cuentas todavía no está habilitada. Consultá a Pródigo.';
   if (/invalid login/i.test(error.message) || error.code === 'invalid_credentials') return 'Usuario, correo o contraseña incorrectos.';
   if (error.status === 401 || /JWT expired|refresh token/i.test(error.message)) return 'La sesión venció. Ingresá nuevamente en otra pestaña y reintentá; conservá esta ficha abierta.';
   if (/fetch|network|load failed/i.test(error.message)) return 'No se pudo conectar. Conservá esta ficha abierta y volvé a intentar.';
   return error.message || 'No se pudo completar la operación.';
 }
 function showAuth() { $('#loading').hidden = true; $('#app').hidden = true; $('#auth').hidden = false; }
+function signupMode(enabled) {
+  $('#login-form').hidden = enabled; $('#signup-form').hidden = !enabled;
+  if (enabled && hasInvitation) {
+    $('#signup-username').value = invitedUsername; $('#signup-username').disabled = true;
+    $('#signup-code').value = invitedCode; $('#signup-code-label').hidden = true;
+  } else if (enabled) {
+    $('#signup-username').disabled = false; $('#signup-code-label').hidden = false;
+  }
+}
+$('#open-signup').addEventListener('click',() => signupMode(true));
+$('#back-to-login').addEventListener('click',() => signupMode(false));
+$('#signup-form').addEventListener('submit',async event => {
+  event.preventDefault(); const form = event.currentTarget;
+  if ($('#signup-submit').disabled) return;
+  $('#signup-error').textContent = '';
+  if ($('#signup-password').value !== $('#signup-repeat').value) { $('#signup-error').textContent = 'Las contraseñas no coinciden.'; return; }
+  $('#signup-submit').disabled = true; $('#back-to-login').disabled = true;
+  try {
+    const result = await db.register({username:$('#signup-username').value,email:$('#signup-email').value,
+      password:$('#signup-password').value,invitationCode:$('#signup-code').value});
+    if (!result.session) {
+      $('#login-error').textContent = 'Cuenta creada. Revisá tu correo para confirmar el acceso y después ingresá.';
+      signupMode(false);
+    } else {
+      signupMode(false);
+      try { await enterApp(); toast('Tu cuenta está lista. Ya podés cargar objetos.'); }
+      catch (error) { showAuth(); $('#login-error').textContent = 'La cuenta se creó. Volvé a ingresar para cargar el inventario. '+errorText(error); }
+    }
+    form.reset(); hasInvitation = false; history.replaceState(null,'',location.pathname+location.search);
+  } catch (error) {
+    $('#signup-error').textContent = /database error saving new user/i.test(error.message)
+      ? 'No se pudo completar el alta. Comprobá que el enlace siga vigente y no se haya utilizado; si persiste, consultá a Pródigo.'
+      : errorText(error);
+  } finally { $('#signup-submit').disabled = false; $('#back-to-login').disabled = false; }
+});
 async function enterApp() {
   const snapshot = await db.load(); Object.assign(state,snapshot);
   $('#member-name').textContent = snapshot.member.display_name;
@@ -281,6 +322,7 @@ setInterval(() => { if (!document.hidden && !$('#app').hidden && !$('#editor').o
 try {
   db = connect(config);
   if (!db) { $('#loading').hidden = true; $('#configuration').hidden = false; }
+  else if (hasInvitation) { showAuth(); signupMode(true); }
   else if (await db.session()) {
     try { await enterApp(); } catch (error) { showAuth(); $('#login-error').textContent = errorText(error); }
   } else showAuth();
