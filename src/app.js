@@ -2,12 +2,13 @@ import { connect } from './data.js';
 import { destinations, normalize, title, validate, csv, exportRecord, photoName } from './core.js';
 import { compressPhoto, compressFrame } from './photos.js';
 import { Camera, cameraError } from './camera.js';
+import { createCropEditor, cropThumbnail, validCrop } from './photo-crop.js';
 import { orderedBatchImages } from './batch.js';
 import { Zip, ZipPassThrough, strToU8 } from 'fflate';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const state = {items:[],terms:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoUrl:null,dirty:false,busy:false,loading:false,user:null};
+const state = {items:[],terms:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoUrl:null,crop:null,dirty:false,busy:false,loading:false,user:null};
 const stepTitles = ['Foto y objeto','Marca','Modelo','Fecha y numeración','Tipo','Destino y revisión'];
 const config = globalThis.PRODIGO_CONFIG;
 let db;
@@ -124,7 +125,7 @@ function card(item) {
   const button = element('button','card'); button.type = 'button';
   button.setAttribute('aria-label',`Editar ${item.code}, ${title(item)}`);
   const picture = element('div','card-image'), img = element('img');
-  img.alt = title(item); img.loading = 'lazy'; picture.append(img);
+  img.alt = title(item); img.loading = 'lazy'; picture.append(cropThumbnail(img,item.photo_crop));
   // Solo solicitar fotos de las tarjetas mostradas, nunca de las 5.000 fichas a la vez.
   db.photoUrl(item.photo_path).then(url => { if (button.isConnected) img.src = url; }).catch(() => { img.alt = 'Foto no disponible. Probá Actualizar.'; });
   const body = element('div','card-body');
@@ -191,6 +192,8 @@ function showStep(step) {
 }
 async function openEditor(item = null) {
   state.current = item; state.draftId = item?.id || (batchEditing ? (batch.draftId ??= crypto.randomUUID()) : crypto.randomUUID()); state.photo = null;
+  state.crop = validCrop(item?.photo_crop) ? item.photo_crop : null;
+  $('#crop-button').hidden = true;
   $('#delete-item').hidden = !item;
   if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
   state.dirty = false; $('#item-form').reset();
@@ -204,11 +207,30 @@ async function openEditor(item = null) {
   renderBatchReference();
   $('#editor').showModal(); showStep(0);
   if (item) {
-    try { const url = await db.photoUrl(item.photo_path); if (state.current?.id === item.id && !state.photo) showPhoto(url); }
+    try { const url = await db.photoUrl(item.photo_path); if ($('#editor').open && state.current?.id === item.id && !state.photo) showPhoto(url); }
     catch { $('#photo-status').textContent = 'No se pudo mostrar la foto. Podés conservarla o reemplazarla.'; }
   }
 }
-function showPhoto(url) { const img = element('img'); img.src = url; img.alt = 'Foto del objeto'; $('#photo-stage').replaceChildren(img); }
+function updateCropButton() {
+  $('#crop-button').textContent = state.crop ? 'Editar recorte de la grilla' : 'Recortar para la grilla';
+}
+function showPhoto(url) {
+  const img = element('img');
+  img.src = url;
+  img.alt = 'Foto del objeto';
+  $('#photo-stage').replaceChildren(img);
+  updateCropButton();
+  $('#crop-button').hidden = false;
+}
+const openCrop = createCropEditor($('#crop-dialog'), crop => {
+  state.crop = crop;
+  state.dirty = true;
+  updateCropButton();
+});
+$('#crop-button').addEventListener('click',() => {
+  const photo = $('#photo-stage img');
+  if (!state.busy && photo) openCrop(photo.src,state.crop);
+});
 function busy(value) {
   state.busy = value;
   $$('#item-form button, #item-form input, #item-form select, #item-form textarea').forEach(control => control.disabled = value);
@@ -364,6 +386,7 @@ window.addEventListener('pagehide',closeCamera);
 $('#gallery-button').addEventListener('click',() => $('#gallery-input').click());
 function setPhoto(photo) {
   if (state.photoUrl) URL.revokeObjectURL(state.photoUrl);
+  state.crop = null;
   state.photo = photo; state.photoUrl = URL.createObjectURL(photo); showPhoto(state.photoUrl); state.dirty = true;
   $('#form-error').textContent = '';
   $('#photo-status').textContent = `Una foto · ${Math.ceil(photo.size/1024)} KB. Podés reemplazarla antes de guardar.`;
@@ -389,7 +412,7 @@ $('#item-form').addEventListener('submit',async event => {
       if (!comboValue('category')) throw Error('Elegí el objeto.');
     }
     if (state.step < 5) { showStep(state.step+1); return; }
-    const record = validate(values()); busy(true); $('#next-step').textContent = 'Guardando…';
+    const record = {...validate(values()),photo_crop:state.crop}; busy(true); $('#next-step').textContent = 'Guardando…';
     const saved = await db.save({id:state.draftId,revision:state.current?.revision || 0,values:record,photo:state.photo,photoPath:state.current?.photo_path,userId:state.user.id});
     state.items = [...state.items.filter(i => i.id !== saved.id),saved];
     const savedFromBatch = batchEditing;

@@ -167,5 +167,30 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       assert.equal((await save(id,0,numbered,path)).rows[0].code,created.code);
       await assert.rejects(save(id,0,{...numbered,original_number:'000459'},path),/ya fue guardada/);
     });
+    await t.test('El recorte se edita por revisión y se mantiene asociado a su foto',async () => {
+      await db.exec('reset role');
+      await db.exec(await readFile(new URL('../supabase/migrations/202610280006_photo_crop.sql',import.meta.url),'utf8'));
+      await as(users[0]);
+      const id = randomUUID(), path = await upload(users[0],id);
+      const crop = [.1,.2,.3,.4];
+      const input = {...values,original_number:'000127',photo_crop:crop};
+      const created = (await save(id,0,input,path)).rows[0];
+      assert.deepEqual(created.photo_crop,crop);
+      assert.equal((await save(id,0,input,path)).rows[0].code,created.code);
+      await assert.rejects(save(id,0,{...input,photo_crop:null},path),/ya fue guardada/);
+      await assert.rejects(save(id,1,{...input,photo_crop:[.9,0,.5,.5]},path),/check constraint/);
+      const oldClient = (await save(id,1,{...values,notes:'Revisado'},path)).rows[0];
+      assert.deepEqual(oldClient.photo_crop,crop);
+      assert.equal(oldClient.original_number,'000127');
+      const cleared = (await save(id,2,{...values,photo_crop:null},path)).rows[0];
+      assert.equal(cleared.photo_crop,null);
+      const edited = (await save(id,3,input,path)).rows[0];
+      assert.equal(edited.photo_path,path);
+      assert.deepEqual(edited.photo_crop,crop);
+      await as(users[1]);
+      const replacement = await upload(users[1],id);
+      const replaced = (await save(id,edited.revision,values,replacement)).rows[0];
+      assert.equal(replaced.photo_crop,null);
+    });
   } finally { await db.close(); }
 });

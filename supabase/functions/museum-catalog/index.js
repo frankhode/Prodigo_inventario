@@ -43,19 +43,20 @@ export async function handleCatalog(request, {
       return new Response(file.body, { headers: { ...headers, 'Content-Type': 'image/jpeg' } });
     }
 
-    query.searchParams.set('select', fields + ',original_number');
     query.searchParams.set('order', 'code.asc');
     query.searchParams.set('limit', String(pageSize));
     if (after) query.searchParams.set('code', 'gt.' + after);
-    let result = await fetchImpl(query, { headers: auth });
-    // Los inventarios que todavía no aplicaron la migración de numeración también se pueden consultar.
-    if (!result.ok && (await result.json()).code === '42703') {
-      query.searchParams.set('select', fields);
-      result = await fetchImpl(query, { headers: auth });
+    // Seguir sirviendo el catálogo mientras se aplican las migraciones.
+    for (const extra of [',original_number,photo_crop', ',original_number', '']) {
+      query.searchParams.set('select', fields + extra);
+      const result = await fetchImpl(query, { headers: auth });
+      if (result.ok) {
+        const items = await result.json();
+        return json({ items, next: items.length ? items.at(-1).code : null });
+      }
+      if ((await result.json()).code !== '42703') break;
     }
-    if (!result.ok) throw Error('Error de consulta');
-    const items = await result.json();
-    return json({ items, next: items.length ? items.at(-1).code : null });
+    throw Error('Error de consulta');
   } catch {
     return json({ error: 'Catálogo no disponible.' }, 503);
   }

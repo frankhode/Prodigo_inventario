@@ -33,3 +33,17 @@
   .batch-reference{margin-bottom:18px}
   .batch-reference img{max-height:28svh}
 }
+
+.card-image>.catalog-crop{height:100%;aspect-ratio:1;max-width:100%;position:relative;overflow:hidden;flex:none}
+.catalog-crop>img{position:absolute;max-width:none;object-fit:fill}
+.crop-button{min-height:44px;margin-top:4px;color:var(--green)}
+#crop-dialog{width:min(620px,calc(100% - 24px))}
+#crop-dialog .dialog-header{padding:16px 20px}
+#crop-dialog h2{font-size:26px}
+.crop-body{padding:0 20px 20px}
+.crop-body .hint{margin:8px 0 12px}
+.crop-surface{position:relative;width:fit-content;max-width:100%;margin:0 auto 14px;overflow:hidden;touch-action:none;cursor:move}
+.crop-surface>img{display:block;max-width:100%;max-height:46svh;user-select:none}
+.crop-selection{position:absolute;outline:2px solid white;outline-offset:-2px;box-shadow:0 0 0 200vmax #0009;pointer-events:none}
+.crop-body input[type=range]{display:block;padding:0;accent-color:var(--green);border:0;min-height:36px}
+.crop-body .dialog-actions{margin-top:12px;flex-wrap:wrap}

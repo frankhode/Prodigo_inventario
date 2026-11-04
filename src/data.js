@@ -58,10 +58,16 @@ export function connect(config) {
       photoUrls.set(path,{url:result.signedUrl,expires:Date.now()+45*60*1000}); return result.signedUrl;
     },
     async save({id,revision,values,photo,photoPath,userId}) {
-      if (values.original_number) {
-        // Evitar que una base anterior descarte el número al guardar.
-        const schema = await client.from('inventory_items').select('original_number').limit(0);
-        if (schema.error?.code === '42703') throw Error('La numeración original todavía no está habilitada. Consultá a Pródigo.');
+      const extraFields = [];
+      if (values.original_number) extraFields.push('original_number');
+      if (values.photo_crop) extraFields.push('photo_crop');
+      if (extraFields.length) {
+        // Evitar que una base anterior descarte los campos al guardar.
+        const schema = await client.from('inventory_items').select(extraFields.join(',')).limit(0);
+        if (schema.error?.code === '42703') {
+          const field = schema.error.message.includes('photo_crop') ? 'El recorte' : 'La numeración original';
+          throw Error(field + ' todavía no está disponible. Consultá a Pródigo.');
+        }
         check(schema);
       }
       let path = photoPath;
