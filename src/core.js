@@ -3,6 +3,12 @@ export const normalize = value => String(value ?? '').toLocaleLowerCase('es').no
 export const fields = ['category','brand','model','manufacture_date','original_number','type','destination','notes'];
 export const title = item => [item.brand,item.model].filter(Boolean).join(' ') || item.category;
 export const photoName = item => `${item.code}.jpg`;
+export function photoFiles(item) {
+  return [
+    {path:item.photo_path,name:`fotos/${photoName(item)}`},
+    ...(item.extra_photos ?? []).map((path,index) => ({path,name:`fotos/${item.code}-${index+2}.jpg`})),
+  ];
+}
 export function validate(values) {
   if (!values.category?.trim()) throw Error('Elegí el objeto.');
   if (values.model?.trim() && !values.brand?.trim()) throw Error('Elegí una marca antes de consignar el modelo.');
@@ -15,12 +21,12 @@ export function validate(values) {
   return Object.fromEntries(fields.map(field => [field,values[field].trim()]));
 }
 export function csv(items) {
-  const columns = ['Identificador','Objeto','Marca','Modelo','Fecha','N.º de serie / numeración original','Tipo','Destino','Notas','Foto','Alta','Modificación','Creado por','Modificado por'];
+  const columns = ['Identificador','Objeto','Marca','Modelo','Fecha','N.º de serie / numeración original','Tipo','Destino','Notas','Foto','Alta','Modificación','Creado por','Modificado por','Fotos adicionales'];
   // Evitar que Excel interprete como fórmulas los valores ingresados por usuarios.
   const cell = value => '"' + String(value ?? '').replace(/^[\s\u0000-\u001f]*[=+@-]/, match => "'" + match).replaceAll('"','""') + '"';
-  const rows = items.map(i => [i.code,i.category,i.brand,i.model,i.manufacture_date,i.original_number,i.type,destinations[i.destination],i.notes,photoName(i),i.created_at,i.updated_at,i.created_by,i.updated_by]);
+  const rows = items.map(i => [i.code,i.category,i.brand,i.model,i.manufacture_date,i.original_number,i.type,destinations[i.destination],i.notes,photoName(i),i.created_at,i.updated_at,i.created_by,i.updated_by,photoFiles(i).slice(1).map(file => file.name).join(', ')]);
   return '\ufeff' + [columns,...rows].map(row => row.map(cell).join(';')).join('\r\n');
 }
 export function exportRecord(item) {
-  return { ...item, original_number: item.original_number ?? '', photo_file: `fotos/${photoName(item)}` };
+  return { ...item, original_number: item.original_number ?? '', photo_file: `fotos/${photoName(item)}`, extra_photo_files: photoFiles(item).slice(1).map(file => file.name) };
 }

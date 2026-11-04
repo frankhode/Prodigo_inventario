@@ -192,5 +192,26 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       const replaced = (await save(id,edited.revision,values,replacement)).rows[0];
       assert.equal(replaced.photo_crop,null);
     });
+    await t.test('La galería pertenece a su ficha y protege las fotos vinculadas',async () => {
+      await db.exec('reset role');
+      await db.exec(await readFile(new URL('../supabase/migrations/202610280007_extra_photos.sql',import.meta.url),'utf8'));
+      await as(users[0]);
+      const id = randomUUID(), cover = await upload(users[0],id);
+      const extra = `${users[0]}/${id}/${'b'.repeat(64)}.jpg`;
+      await db.query("insert into storage.objects values ('inventory-photos',$1)",[extra]);
+      const foreign = await upload(users[0],randomUUID());
+      await assert.rejects(save(id,0,{...values,extra_photos:[foreign]},cover),/fotos válidas/);
+      const withGallery = {...values,extra_photos:[extra]};
+      const created = (await save(id,0,withGallery,cover)).rows[0];
+      assert.deepEqual(created.extra_photos,[extra]);
+      assert.equal((await save(id,0,withGallery,cover)).rows[0].code,created.code);
+      await as(users[1]);
+      const legacyEdit = (await save(id,1,{...values,notes:'Revisado'},cover)).rows[0];
+      assert.deepEqual(legacyEdit.extra_photos,[extra]);
+      const clean = () => db.query('delete from storage.objects where name=$1 returning name',[extra]);
+      assert.equal((await clean()).rows.length,0);
+      await save(id,2,{...values,extra_photos:[]},cover);
+      assert.equal((await clean()).rows.length,1);
+    });
   } finally { await db.close(); }
 });

@@ -12,6 +12,14 @@ export function connect(config) {
   const client = createClient(config.supabaseUrl,config.publishableKey);
   const photoUrls = new Map();
   const check = result => { if (result.error) throw result.error; return result.data; };
+  async function uploadPhoto(id, userId, photo) {
+    const digest = await crypto.subtle.digest('SHA-256',await photo.arrayBuffer());
+    const hash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2,'0')).join('');
+    const path = `${userId}/${id}/${hash}.jpg`;
+    const uploaded = await client.storage.from('inventory-photos').upload(path,photo,{contentType:'image/jpeg',upsert:false});
+    if (uploaded.error && !['Duplicate','409'].includes(String(uploaded.error.error ?? uploaded.error.statusCode)) && !/already exists/i.test(uploaded.error.message)) throw uploaded.error;
+    return path;
+  }
   async function all(table) {
     const rows = [];
     for (let offset = 0;; offset += 500) {
@@ -57,43 +65,51 @@ export function connect(config) {
       const result = check(await client.storage.from('inventory-photos').createSignedUrl(path,3600));
       photoUrls.set(path,{url:result.signedUrl,expires:Date.now()+45*60*1000}); return result.signedUrl;
     },
-    async save({id,revision,values,photo,photoPath,userId}) {
+    async save({id,revision,values,photo,photoPath,userId,gallery,previousExtraPhotos = []}) {
       const extraFields = [];
       if (values.original_number) extraFields.push('original_number');
       if (values.photo_crop) extraFields.push('photo_crop');
+      if (gallery?.length) extraFields.push('extra_photos');
       if (extraFields.length) {
         // Evitar que una base anterior descarte los campos al guardar.
         const schema = await client.from('inventory_items').select(extraFields.join(',')).limit(0);
         if (schema.error?.code === '42703') {
-          const field = schema.error.message.includes('photo_crop') ? 'El recorte' : 'La numeración original';
+          const message = schema.error.message;
+          const field = message.includes('extra_photos') ? 'La galería'
+            : message.includes('photo_crop') ? 'El recorte' : 'La numeración original';
           throw Error(field + ' todavía no está disponible. Consultá a Pródigo.');
         }
         check(schema);
       }
-      let path = photoPath;
-      if (photo) {
-        const digest = await crypto.subtle.digest('SHA-256',await photo.arrayBuffer());
-        const hash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2,'0')).join('');
-        path = `${userId}/${id}/${hash}.jpg`;
-        const uploaded = await client.storage.from('inventory-photos').upload(path,photo,{contentType:'image/jpeg',upsert:false});
-        if (uploaded.error && !['Duplicate','409'].includes(String(uploaded.error.error ?? uploaded.error.statusCode)) && !/already exists/i.test(uploaded.error.message)) throw uploaded.error;
+      const path = photo ? await uploadPhoto(id,userId,photo) : photoPath;
+      if (gallery) {
+        const extras = new Set();
+        for (const entry of gallery) extras.add(entry.path ?? await uploadPhoto(id,userId,entry.blob));
+        extras.delete(path);
+        values = {...values,extra_photos:[...extras]};
       }
       const result = check(await client.rpc('save_inventory_item',{p_id:id,p_revision:revision,p_values:values,p_photo_path:path}));
       const saved = Array.isArray(result) ? result[0] : result;
       if (!saved?.id || !saved.code) throw Error('No se pudo confirmar el guardado. Conservá la ficha y reintentá.');
-      // Una foto reemplazada deja de estar vinculada. Un fallo de limpieza no invalida el guardado.
-      if (photoPath && photoPath !== path) await client.storage.from('inventory-photos').remove([photoPath]).catch(() => {});
+      // Limpiar solo archivos que ya no están vinculados, después de confirmar el guardado.
+      const retained = new Set([saved.photo_path ?? path,...(saved.extra_photos ?? [])]);
+      const unused = [photoPath,...previousExtraPhotos].filter(path => path && !retained.has(path));
+      if (unused.length) {
+        for (const path of unused) photoUrls.delete(path);
+        await client.storage.from('inventory-photos').remove(unused).catch(() => {});
+      }
       return saved;
     },
-    async remove({id,revision,photoPath}) {
+    async remove({id,revision,photoPath,extraPhotos = []}) {
       const result = await client.rpc('delete_inventory_item',{p_id:id,p_revision:revision});
       if (result.error?.code === 'PGRST202') throw Error('La opción de borrar todavía no está habilitada. Consultá a Pródigo.');
       const path = check(result) || photoPath;
-      photoUrls.delete(path);
-      // La foto solo se quita después del borrado confirmado; RLS impide quitar fotos vinculadas.
+      const paths = [...new Set([path,...extraPhotos].filter(Boolean))];
+      for (const path of paths) photoUrls.delete(path);
+      // Los archivos solo se quitan después del borrado confirmado.
       let photoCleanupFailed = false;
-      if (path) {
-        try { photoCleanupFailed = !!(await client.storage.from('inventory-photos').remove([path])).error; }
+      if (paths.length) {
+        try { photoCleanupFailed = !!(await client.storage.from('inventory-photos').remove(paths)).error; }
         catch { photoCleanupFailed = true; }
       }
       return {photoCleanupFailed};

@@ -1,5 +1,5 @@
 import { connect } from './data.js';
-import { destinations, normalize, title, validate, csv, exportRecord, photoName } from './core.js';
+import { destinations, normalize, title, validate, csv, exportRecord, photoFiles } from './core.js';
 import { compressPhoto, compressFrame } from './photos.js';
 import { Camera, cameraError } from './camera.js';
 import { createCropEditor, cropThumbnail, validCrop } from './photo-crop.js';
@@ -8,7 +8,7 @@ import { Zip, ZipPassThrough, strToU8 } from 'fflate';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const state = {items:[],terms:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoUrl:null,crop:null,dirty:false,busy:false,loading:false,user:null};
+const state = {items:[],terms:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoUrl:null,crop:null,gallery:[],dirty:false,busy:false,loading:false,user:null};
 const stepTitles = ['Foto y objeto','Marca','Modelo','Fecha y numeración','Tipo','Destino y revisión'];
 const config = globalThis.PRODIGO_CONFIG;
 let db;
@@ -181,6 +181,69 @@ function renderReview() {
   const rows = [['Objeto',v.category],['Marca',v.brand],['Modelo',v.model],['Fecha',v.manufacture_date],['N.º de serie / numeración original',v.original_number],['Tipo',v.type]];
   $('#review').replaceChildren(...rows.flatMap(([label,value]) => [element('dt','',label),element('dd','',value || 'Sin consignar')]));
 }
+const maxExtraPhotos = 7;
+
+function clearExtraPhotos() {
+  for (const photo of state.gallery) if (photo.url) URL.revokeObjectURL(photo.url);
+  state.gallery = [];
+  $('#extra-photos-list').replaceChildren();
+}
+function updateExtraPhotoControls() {
+  $('#add-extra-photos').disabled = state.busy || state.gallery.length >= maxExtraPhotos;
+  $('#extra-photos-count').textContent = `${state.gallery.length} de ${maxExtraPhotos} adicionales`;
+}
+function renderExtraPhotos() {
+  $('#extra-photos-list').replaceChildren(...state.gallery.map((photo,index) => {
+    const card = element('div','extra-photo');
+    const link = element('a');
+    link.target = '_blank';
+    link.rel = 'noopener';
+    const image = element('img');
+    image.alt = `Foto adicional ${index + 1}`;
+    link.append(image);
+    const show = url => { image.src = url; link.href = url; };
+    if (photo.url) show(photo.url);
+    else db.photoUrl(photo.path).then(url => { if (card.isConnected) show(url); })
+      .catch(() => { image.alt = 'Foto no disponible'; });
+    const remove = element('button','text-button','Quitar');
+    remove.type = 'button';
+    remove.disabled = state.busy;
+    remove.setAttribute('aria-label',`Quitar foto adicional ${index + 1}`);
+    remove.addEventListener('click',() => {
+      if (state.busy) return;
+      state.gallery.splice(index,1);
+      if (photo.url) URL.revokeObjectURL(photo.url);
+      state.dirty = true;
+      renderExtraPhotos();
+      $('#add-extra-photos').focus();
+    });
+    card.append(link,remove);
+    return card;
+  }));
+  updateExtraPhotoControls();
+}
+
+$('#add-extra-photos').addEventListener('click',() => $('#extra-photos-input').click());
+$('#extra-photos-input').addEventListener('change',async event => {
+  const files = [...event.target.files];
+  event.target.value = '';
+  if (!files.length || state.busy) return;
+  if (files.length > maxExtraPhotos - state.gallery.length) {
+    $('#form-error').textContent = 'Elegí hasta siete fotos adicionales en total.';
+    return;
+  }
+  busy(true);
+  $('#form-error').textContent = '';
+  try {
+    for (const file of files) {
+      const blob = await compressPhoto(file);
+      state.gallery.push({blob,url:URL.createObjectURL(blob)});
+      state.dirty = true;
+    }
+  } catch (error) { $('#form-error').textContent = errorText(error); }
+  finally { busy(false); renderExtraPhotos(); }
+});
+
 function saveLabel() { return state.current ? 'Guardar cambios' : 'Guardar objeto'; }
 function showStep(step) {
   state.step = step; $('#form-error').textContent = '';
@@ -192,6 +255,8 @@ function showStep(step) {
 }
 async function openEditor(item = null) {
   state.current = item; state.draftId = item?.id || (batchEditing ? (batch.draftId ??= crypto.randomUUID()) : crypto.randomUUID()); state.photo = null;
+  clearExtraPhotos();
+  state.gallery = (item?.extra_photos ?? []).map(path => ({path}));
   state.crop = validCrop(item?.photo_crop) ? item.photo_crop : null;
   $('#crop-button').hidden = true;
   $('#delete-item').hidden = !item;
@@ -203,7 +268,8 @@ async function openEditor(item = null) {
   $('#editor-kicker').textContent = item?.code || 'NUEVO OBJETO'; $('#editor-title').textContent = item ? title(item) : 'Registrar un objeto';
   $('#item-dates').textContent = item ? `Alta: ${new Date(item.created_at).toLocaleDateString('es-AR')} · Revisión ${item.revision}` : '';
   $('#photo-stage').replaceChildren(element('span','',item ? 'Cargando foto…' : 'Una foto para reconocer el objeto.'));
-  $('#photo-status').textContent = 'Se guarda una sola foto, reducida para ahorrar espacio.';
+  $('#photo-status').textContent = 'La portada se usa en la grilla.';
+  renderExtraPhotos();
   renderBatchReference();
   $('#editor').showModal(); showStep(0);
   if (item) {
@@ -234,6 +300,7 @@ $('#crop-button').addEventListener('click',() => {
 function busy(value) {
   state.busy = value;
   $$('#item-form button, #item-form input, #item-form select, #item-form textarea').forEach(control => control.disabled = value);
+  updateExtraPhotoControls();
   if (!value) { $('#model-select').disabled = !comboValue('brand'); $('#model-new').disabled = !comboValue('brand'); }
 }
 $('#new-item').addEventListener('click',() => openEditor()); $('#empty-new').addEventListener('click',() => openEditor());
@@ -327,6 +394,7 @@ async function closeEditor() {
     if (!discard) return;
   }
   $('#editor').close(); state.dirty = false;
+  clearExtraPhotos();
   batchEditing = false; renderBatchReference();
   if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
 }
@@ -335,19 +403,20 @@ $('#editor').addEventListener('cancel',event => { event.preventDefault(); closeE
 $('#delete-item').addEventListener('click',async () => {
   if (state.busy || !state.current) return;
   const item = state.current;
-  $('#delete-description').textContent = `Se borrará ${item.code} · ${title(item)}, con sus datos y su foto. Esta acción no se puede deshacer. El identificador no se volverá a usar.`;
+  $('#delete-description').textContent = `Se borrará ${item.code} · ${title(item)}, con sus datos y sus fotos. Esta acción no se puede deshacer. El identificador no se volverá a usar.`;
   $('#delete-confirm').returnValue = ''; $('#delete-confirm').showModal();
   const confirmed = await new Promise(resolve => $('#delete-confirm').addEventListener('close',() => resolve($('#delete-confirm').returnValue === 'delete'),{once:true}));
   if (!confirmed) return;
   busy(true); $('#form-error').textContent = '';
   try {
-    const {photoCleanupFailed} = await db.remove({id:item.id,revision:item.revision,photoPath:item.photo_path});
+    const {photoCleanupFailed} = await db.remove({id:item.id,revision:item.revision,photoPath:item.photo_path,extraPhotos:item.extra_photos});
     state.items = state.items.filter(row => row.id !== item.id);
     state.dirty = false; state.photo = null; $('#editor').close();
+    clearExtraPhotos();
     if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
     updateCategoryFilter(); render(); toast(`${item.code} borrado.`);
     if (photoCleanupFailed) {
-      $('#list-error').textContent = 'El registro se borró, pero no se pudo quitar su foto del almacenamiento.'; $('#list-error').hidden = false;
+      $('#list-error').textContent = 'El registro se borró, pero quedaron fotos pendientes de quitar del almacenamiento.'; $('#list-error').hidden = false;
     }
   } catch (error) { $('#form-error').textContent = errorText(error); }
   finally { busy(false); }
@@ -389,7 +458,7 @@ function setPhoto(photo) {
   state.crop = null;
   state.photo = photo; state.photoUrl = URL.createObjectURL(photo); showPhoto(state.photoUrl); state.dirty = true;
   $('#form-error').textContent = '';
-  $('#photo-status').textContent = `Una foto · ${Math.ceil(photo.size/1024)} KB. Podés reemplazarla antes de guardar.`;
+  $('#photo-status').textContent = `Portada · ${Math.ceil(photo.size/1024)} KB. Podés reemplazarla antes de guardar.`;
 }
 for (const input of [$('#camera-input'),$('#gallery-input')]) input.addEventListener('change',async () => {
   const file = input.files[0]; input.value = ''; if (!file) return;
@@ -413,7 +482,8 @@ $('#item-form').addEventListener('submit',async event => {
     }
     if (state.step < 5) { showStep(state.step+1); return; }
     const record = {...validate(values()),photo_crop:state.crop}; busy(true); $('#next-step').textContent = 'Guardando…';
-    const saved = await db.save({id:state.draftId,revision:state.current?.revision || 0,values:record,photo:state.photo,photoPath:state.current?.photo_path,userId:state.user.id});
+    const saved = await db.save({id:state.draftId,revision:state.current?.revision || 0,values:record,photo:state.photo,photoPath:state.current?.photo_path,userId:state.user.id,
+      gallery:state.gallery,previousExtraPhotos:state.current?.extra_photos});
     state.items = [...state.items.filter(i => i.id !== saved.id),saved];
     const savedFromBatch = batchEditing;
     if (savedFromBatch) {
@@ -425,6 +495,7 @@ $('#item-form').addEventListener('submit',async event => {
       batchEditing = false; renderBatchReference(); renderBatchControls();
     }
     state.dirty = false;
+    clearExtraPhotos();
     if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
     updateCategoryFilter(); render();
     toast(savedFromBatch && !continueBatch ? `${saved.code} guardado. Lote terminado.` : `${saved.code} guardado.`);
@@ -451,8 +522,9 @@ $('#export-backup').addEventListener('click',async () => {
   // En teléfonos, un ZIP de 5.000 fotos podría agotar la memoria. Descargar por partes.
   const snapshot = state.backup || {items:structuredClone(state.items),terms:structuredClone(state.terms),offset:0};
   const {items,terms} = snapshot;
-  const batch = streaming ? items : items.slice(snapshot.offset,snapshot.offset+200);
-  const part = Math.floor(snapshot.offset/200)+1, parts = Math.max(1,Math.ceil(items.length/200));
+  const photos = items.flatMap(photoFiles);
+  const batch = streaming ? photos : photos.slice(snapshot.offset,snapshot.offset+200);
+  const part = Math.floor(snapshot.offset/200)+1, parts = Math.max(1,Math.ceil(photos.length/200));
   let sink, chunks = [], zip, zipError;
   try {
     // En navegadores compatibles, escribir directamente en disco evita acumular el ZIP.
@@ -471,14 +543,14 @@ $('#export-backup').addEventListener('click',async () => {
     const failures = [];
     for (let index = 0; index < batch.length; index++) {
       status.textContent = `Preparando respaldo: ${index+1} de ${batch.length} fotos${streaming ? '' : ` · parte ${part} de ${parts}`}… Mantené esta página abierta.`;
-      try { const blob = await db.photoBlob(batch[index].photo_path); add(`fotos/${photoName(batch[index])}`,new Uint8Array(await blob.arrayBuffer())); }
-      catch { failures.push(batch[index].code); }
+      try { const blob = await db.photoBlob(batch[index].path); add(batch[index].name,new Uint8Array(await blob.arrayBuffer())); }
+      catch { failures.push(batch[index].name); }
       await writing; if (zipError) throw zipError;
     }
     if (failures.length) add('FOTOS_FALTANTES.txt',strToU8('Respaldo incompleto. No se pudieron descargar estas fotos:\n'+failures.join('\n')));
     zip.end(); await writing; if (zipError) throw zipError;
     if (sink) await sink.close(); else download(new Blob(chunks,{type:'application/zip'}),`prodigo-${stamp()}-parte-${String(part).padStart(3,'0')}-de-${parts}${failures.length ? '-incompleto' : ''}.zip`);
-    if (!streaming && !failures.length && snapshot.offset+batch.length < items.length) {
+    if (!streaming && !failures.length && snapshot.offset+batch.length < photos.length) {
       state.backup = {...snapshot,offset:snapshot.offset+batch.length};
       button.textContent = `Descargar parte ${part+1} de ${parts}`;
       status.textContent = `Parte ${part} de ${parts} descargada. Continuá con la siguiente para completar el respaldo.`;
