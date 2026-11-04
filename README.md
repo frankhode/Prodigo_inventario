@@ -11,6 +11,7 @@ Seis pasos: **foto y objeto → marca → modelo → fecha → tipo → destino 
 - Clases iniciales: **Máquina de escribir, Fotografía y Velador**. El combo permite agregar otras.
 - Marcas propias de cada clase de objeto; modelos asociados a la marca. Ambos pueden quedar vacíos cuando no corresponden.
 - Fecha de texto libre, de fabricación, toma u otro momento asociado al objeto: `1930`, `ca. 1930`, `15/06/1950`, `1930–1940`. La columna interna y la clave JSON conservan el nombre `manufacture_date` para mantener compatibilidad con las fichas existentes; la interfaz y el CSV muestran **Fecha**.
+- **N.º de serie / numeración original** es opcional y admite hasta 120 caracteres, con letras y ceros iniciales. Está en el paso de fecha, la búsqueda y las exportaciones. Para habilitarlo en Supabase, ejecutá [202610280005_original_number.sql](supabase/migrations/202610280005_original_number.sql).
 - Tipos propios de cada clase; para máquinas de escribir: **Portátil / Escritorio**. Se pueden agregar tipos nuevos.
 - Destino obligatorio: **Museo / Tienda / Otros**, sin preselección.
 - Notas opcionales. Las opciones nuevas se incorporan al guardar la ficha y quedan disponibles para los demás usuarios.

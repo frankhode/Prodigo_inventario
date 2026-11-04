@@ -58,6 +58,12 @@ export function connect(config) {
       photoUrls.set(path,{url:result.signedUrl,expires:Date.now()+45*60*1000}); return result.signedUrl;
     },
     async save({id,revision,values,photo,photoPath,userId}) {
+      if (values.original_number) {
+        // Evitar que una base anterior descarte el número al guardar.
+        const schema = await client.from('inventory_items').select('original_number').limit(0);
+        if (schema.error?.code === '42703') throw Error('La numeración original todavía no está habilitada. Consultá a Pródigo.');
+        check(schema);
+      }
       let path = photoPath;
       if (photo) {
         const digest = await crypto.subtle.digest('SHA-256',await photo.arrayBuffer());

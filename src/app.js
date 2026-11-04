@@ -7,7 +7,7 @@ import { Zip, ZipPassThrough, strToU8 } from 'fflate';
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const state = {items:[],terms:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoUrl:null,dirty:false,busy:false,loading:false,user:null};
-const stepTitles = ['Foto y objeto','Marca','Modelo','Fecha','Tipo','Destino y revisión'];
+const stepTitles = ['Foto y objeto','Marca','Modelo','Fecha y numeración','Tipo','Destino y revisión'];
 const config = globalThis.PRODIGO_CONFIG;
 let db;
 const inviteParams = new URLSearchParams(location.hash.slice(1));
@@ -103,7 +103,7 @@ function updateCategoryFilter() {
 function visibleItems() {
   const query = normalize($('#search').value.trim()), category = $('#category-filter').value;
   const visible = state.items.filter(i => (!state.destination || i.destination === state.destination) && (!category || i.category === category)
-    && (!query || normalize([i.code,i.category,i.brand,i.model,i.manufacture_date,i.type,i.notes,destinations[i.destination]].join(' ')).includes(query)));
+    && (!query || normalize([i.code,i.category,i.brand,i.model,i.manufacture_date,i.original_number,i.type,i.notes,destinations[i.destination]].join(' ')).includes(query)));
   if ($('#sort').value === 'brand') return visible.sort((a,b) => a.brand.localeCompare(b.brand,'es') || a.model.localeCompare(b.model,'es') || a.number-b.number);
   return visible.sort((a,b) => $('#sort').value === 'old' ? a.number-b.number : b.number-a.number);
 }
@@ -124,7 +124,7 @@ function card(item) {
   // Solo solicitar fotos de las tarjetas mostradas, nunca de las 5.000 fichas a la vez.
   db.photoUrl(item.photo_path).then(url => { if (button.isConnected) img.src = url; }).catch(() => { img.alt = 'Foto no disponible. Probá Actualizar.'; });
   const body = element('div','card-body');
-  body.append(element('span','card-code',item.code),element('h3','',title(item)),element('p','card-meta',[item.category,item.manufacture_date,item.type].filter(Boolean).join(' · ')));
+  body.append(element('span','card-code',item.code),element('h3','',title(item)),element('p','card-meta',[item.category,item.manufacture_date,item.type,item.original_number && `N.º ${item.original_number}`].filter(Boolean).join(' · ')));
   const bottom = element('div','card-bottom'); bottom.append(element('span',`badge ${item.destination}`,destinations[item.destination]),element('span','card-edit','Editar ficha ↗'));
   body.append(bottom); button.append(picture,body); button.addEventListener('click',() => openEditor(item)); return button;
 }
@@ -169,11 +169,11 @@ for (const field of combos) {
 }
 function values() {
   return {category:comboValue('category'),brand:comboValue('brand'),model:comboValue('model'),type:comboValue('type'),
-    manufacture_date:$('#manufacture-date').value.trim(),destination:$('#item-form').elements.destination.value,notes:$('#notes').value.trim()};
+    manufacture_date:$('#manufacture-date').value.trim(),original_number:$('#original-number').value.trim(),destination:$('#item-form').elements.destination.value,notes:$('#notes').value.trim()};
 }
 function renderReview() {
   const v = values();
-  const rows = [['Objeto',v.category],['Marca',v.brand],['Modelo',v.model],['Fecha',v.manufacture_date],['Tipo',v.type]];
+  const rows = [['Objeto',v.category],['Marca',v.brand],['Modelo',v.model],['Fecha',v.manufacture_date],['N.º de serie / numeración original',v.original_number],['Tipo',v.type]];
   $('#review').replaceChildren(...rows.flatMap(([label,value]) => [element('dt','',label),element('dd','',value || 'Sin consignar')]));
 }
 function saveLabel() { return state.current ? 'Guardar cambios' : 'Guardar objeto'; }
@@ -191,7 +191,7 @@ async function openEditor(item = null) {
   if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
   state.dirty = false; $('#item-form').reset();
   for (const field of combos) fillCombo(field,item?.[field] || '');
-  $('#manufacture-date').value = item?.manufacture_date || ''; $('#notes').value = item?.notes || '';
+  $('#manufacture-date').value = item?.manufacture_date || ''; $('#original-number').value = item?.original_number || ''; $('#notes').value = item?.notes || '';
   if (item) $('#item-form').elements.destination.value = item.destination;
   $('#editor-kicker').textContent = item?.code || 'NUEVO OBJETO'; $('#editor-title').textContent = item ? title(item) : 'Registrar un objeto';
   $('#item-dates').textContent = item ? `Alta: ${new Date(item.created_at).toLocaleDateString('es-AR')} · Revisión ${item.revision}` : '';

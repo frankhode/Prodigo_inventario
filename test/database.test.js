@@ -144,5 +144,28 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       assert.equal(saved.code,'P000005'); assert.equal(saved.manufacture_date,'15/06/1950');
       assert.equal((await db.query("select name from public.inventory_terms where kind='brand' and name='Olivetti'")).rows.length,1);
     });
+    await t.test('La numeración original se guarda como texto y sobrevive a ediciones desde una versión anterior',async () => {
+      await db.exec('reset role');
+      const migration = await readFile(new URL('../supabase/migrations/202610280005_original_number.sql',import.meta.url),'utf8');
+      await db.exec(migration);
+      await as(users[0]);
+      const existing = (await db.query("select * from public.inventory_items where code='P000005'")).rows[0];
+      assert.equal(existing.original_number,'');
+      const edited = (await save(existing.id,existing.revision,{...values,original_number:'  000127-A  '},existing.photo_path)).rows[0];
+      assert.equal(edited.original_number,'000127-A');
+      assert.equal(edited.code,existing.code);
+      const fromOldClient = (await save(edited.id,edited.revision,{...values,notes:'Revisado'},edited.photo_path)).rows[0];
+      assert.equal(fromOldClient.original_number,'000127-A');
+      const cleared = (await save(edited.id,fromOldClient.revision,{...values,original_number:''},edited.photo_path)).rows[0];
+      assert.equal(cleared.original_number,'');
+      await assert.rejects(save(edited.id,cleared.revision,{...values,original_number:'0'.repeat(121)},edited.photo_path),/120 caracteres/);
+
+      const id = randomUUID(), path = await upload(users[0],id);
+      const numbered = {...values,original_number:'000458'};
+      const created = (await save(id,0,numbered,path)).rows[0];
+      assert.equal(created.original_number,'000458');
+      assert.equal((await save(id,0,numbered,path)).rows[0].code,created.code);
+      await assert.rejects(save(id,0,{...numbered,original_number:'000459'},path),/ya fue guardada/);
+    });
   } finally { await db.close(); }
 });
