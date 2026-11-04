@@ -2,3 +2,8 @@
 # El usuario todavía no tiene sesión. La función verifica usuario y contraseña.
 verify_jwt = false
 entrypoint = "./functions/inventory-login/index.js"
+
+[functions.museum-catalog]
+# Consulta pública de solo lectura. El destino se comprueba en la función.
+verify_jwt = false
+entrypoint = "./functions/museum-catalog/index.js"
