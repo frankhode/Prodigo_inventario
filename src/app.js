@@ -2,6 +2,7 @@ import { connect } from './data.js';
 import { destinations, normalize, title, validate, csv, exportRecord, photoName } from './core.js';
 import { compressPhoto, compressFrame } from './photos.js';
 import { Camera, cameraError } from './camera.js';
+import { orderedBatchImages } from './batch.js';
 import { Zip, ZipPassThrough, strToU8 } from 'fflate';
 
 const $ = selector => document.querySelector(selector);
@@ -10,6 +11,9 @@ const state = {items:[],terms:[],destination:'',limit:24,current:null,draftId:nu
 const stepTitles = ['Foto y objeto','Marca','Modelo','Fecha y numeración','Tipo','Destino y revisión'];
 const config = globalThis.PRODIGO_CONFIG;
 let db;
+let batch = null;
+let batchEditing = false;
+let referenceUrl = null;
 const inviteParams = new URLSearchParams(location.hash.slice(1));
 const invitedUsername = inviteParams.get('alta');
 const invitedCode = inviteParams.get('codigo');
@@ -72,8 +76,8 @@ async function enterApp() {
   $('#auth').hidden = true; $('#loading').hidden = true; $('#app').hidden = false;
   updateCategoryFilter(); render();
 }
-async function refresh() {
-  if (state.loading || state.busy) return;
+async function refresh(duringSave = false) {
+  if (state.loading || (state.busy && duringSave !== true)) return;
   state.loading = true; $('#refresh').disabled = true;
   try {
     const snapshot = await db.load(); Object.assign(state,snapshot);
@@ -90,7 +94,7 @@ $('#login-form').addEventListener('submit',async event => {
   finally { $('#login-submit').disabled = false; }
 });
 $('#logout').addEventListener('click',async () => {
-  try { await db.logout(); state.items = []; state.terms = []; state.user = null; $('#items').replaceChildren(); showAuth(); }
+  try { await db.logout(); batch = null; renderBatchControls(); state.items = []; state.terms = []; state.user = null; $('#items').replaceChildren(); showAuth(); }
   catch (error) { toast(errorText(error)); }
 });
 $('#refresh').addEventListener('click',refresh);
@@ -186,7 +190,7 @@ function showStep(step) {
   const heading = $(`#step-title-${step}`); heading.tabIndex = -1; heading.focus({preventScroll:true}); $('#editor').scrollTop = 0;
 }
 async function openEditor(item = null) {
-  state.current = item; state.draftId = item?.id || crypto.randomUUID(); state.photo = null;
+  state.current = item; state.draftId = item?.id || (batchEditing ? (batch.draftId ??= crypto.randomUUID()) : crypto.randomUUID()); state.photo = null;
   $('#delete-item').hidden = !item;
   if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
   state.dirty = false; $('#item-form').reset();
@@ -197,6 +201,7 @@ async function openEditor(item = null) {
   $('#item-dates').textContent = item ? `Alta: ${new Date(item.created_at).toLocaleDateString('es-AR')} · Revisión ${item.revision}` : '';
   $('#photo-stage').replaceChildren(element('span','',item ? 'Cargando foto…' : 'Una foto para reconocer el objeto.'));
   $('#photo-status').textContent = 'Se guarda una sola foto, reducida para ahorrar espacio.';
+  renderBatchReference();
   $('#editor').showModal(); showStep(0);
   if (item) {
     try { const url = await db.photoUrl(item.photo_path); if (state.current?.id === item.id && !state.photo) showPhoto(url); }
@@ -210,7 +215,87 @@ function busy(value) {
   if (!value) { $('#model-select').disabled = !comboValue('brand'); $('#model-new').disabled = !comboValue('brand'); }
 }
 $('#new-item').addEventListener('click',() => openEditor()); $('#empty-new').addEventListener('click',() => openEditor());
-$('#item-form').addEventListener('input',() => state.dirty = true);
+$('#item-form').addEventListener('input',event => {
+  if (event.target !== $('#batch-is-object')) state.dirty = true;
+});
+
+function renderBatchControls() {
+  $('#batch-start').hidden = Boolean(batch) || !('webkitdirectory' in $('#batch-folder'));
+  $('#batch-files-button').hidden = Boolean(batch);
+  $('#batch-resume').hidden = !batch;
+  $('#batch-end').hidden = !batch;
+  if (batch) $('#batch-resume').textContent = `Continuar lote · foto ${batch.index + 1} de ${batch.files.length}`;
+}
+
+function renderBatchReference() {
+  if (referenceUrl) URL.revokeObjectURL(referenceUrl);
+  referenceUrl = null;
+  $('#batch-reference').hidden = !batchEditing;
+  $('#editor').classList.toggle('has-batch',batchEditing);
+  const preview = $('#batch-reference-image');
+  const link = $('#batch-reference-open');
+  preview.removeAttribute('src');
+  link.removeAttribute('href');
+  if (!batchEditing) return;
+  const { files, index, nextIsObject } = batch;
+  const candidate = files[index + 1];
+  $('#batch-position').textContent = `Foto del objeto ${index + 1} de ${files.length} · ${files[index].name}`;
+  $('#batch-is-object-label').hidden = !candidate;
+  $('#batch-is-object').checked = nextIsObject;
+  $('#batch-reference-name').textContent = candidate
+    ? (nextIsObject ? `Siguiente objeto · ${candidate.name}` : candidate.name)
+    : 'No queda una foto de ficha para este objeto.';
+  const hasReference = Boolean(candidate && !nextIsObject);
+  link.hidden = !hasReference;
+  $('#batch-reference-error').hidden = true;
+  if (hasReference) {
+    referenceUrl = URL.createObjectURL(candidate);
+    link.href = referenceUrl;
+    preview.src = referenceUrl;
+  }
+}
+
+async function openBatchItem() {
+  if (!batch || state.busy || $('#editor').open) return;
+  batchEditing = true;
+  const file = batch.files[batch.index];
+  const opening = openEditor();
+  busy(true);
+  try {
+    await opening;
+    setPhoto(await compressPhoto(file));
+    state.dirty = false;
+  } catch (error) {
+    $('#form-error').textContent = `${file.name}: ${errorText(error)}`;
+  } finally { busy(false); }
+}
+
+$('#batch-start').addEventListener('click',() => $('#batch-folder').click());
+$('#batch-files-button').addEventListener('click',() => $('#batch-files').click());
+for (const input of [$('#batch-folder'),$('#batch-files')]) input.addEventListener('change',() => {
+  const files = orderedBatchImages(input.files);
+  input.value = '';
+  if (!files.length) { toast('No se encontraron imágenes en la selección.'); return; }
+  if (batch || $('#editor').open) return;
+  batch = { files, index:0, nextIsObject:false };
+  renderBatchControls();
+  openBatchItem();
+});
+$('#batch-resume').addEventListener('click',openBatchItem);
+$('#batch-end').addEventListener('click',() => {
+  if (!window.confirm('¿Cerrar el lote? Los objetos ya guardados quedan en el inventario.')) return;
+  batch = null;
+  renderBatchControls();
+});
+$('#batch-is-object').addEventListener('change',event => {
+  batch.nextIsObject = event.currentTarget.checked;
+  renderBatchReference();
+});
+$('#batch-reference-image').addEventListener('error',event => {
+  if (event.currentTarget.getAttribute('src') === referenceUrl) $('#batch-reference-error').hidden = false;
+});
+renderBatchControls();
+
 $('#previous-step').addEventListener('click',() => { if (!state.busy) showStep(Math.max(0,state.step-1)); });
 async function closeEditor() {
   if (state.busy) return;
@@ -220,6 +305,7 @@ async function closeEditor() {
     if (!discard) return;
   }
   $('#editor').close(); state.dirty = false;
+  batchEditing = false; renderBatchReference();
   if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
 }
 $$('.close-editor').forEach(button => button.addEventListener('click',closeEditor));
@@ -244,7 +330,7 @@ $('#delete-item').addEventListener('click',async () => {
   } catch (error) { $('#form-error').textContent = errorText(error); }
   finally { busy(false); }
 });
-window.addEventListener('beforeunload',event => { if (state.dirty || state.busy) { event.preventDefault(); event.returnValue = ''; } });
+window.addEventListener('beforeunload',event => { if (batch || state.dirty || state.busy) { event.preventDefault(); event.returnValue = ''; } });
 const camera = new Camera($('#camera-video'));
 function closeCamera() { camera.stop(); if ($('#camera-dialog').open) $('#camera-dialog').close(); }
 $('#camera-dialog').addEventListener('close',() => camera.stop());
@@ -292,6 +378,7 @@ for (const input of [$('#camera-input'),$('#gallery-input')]) input.addEventList
 });
 $('#item-form').addEventListener('submit',async event => {
   event.preventDefault(); if (state.busy) return;
+  let continueBatch = false;
   try {
     for (const field of combos) {
       const step = {category:0,brand:1,model:2,type:4}[field];
@@ -305,13 +392,26 @@ $('#item-form').addEventListener('submit',async event => {
     const record = validate(values()); busy(true); $('#next-step').textContent = 'Guardando…';
     const saved = await db.save({id:state.draftId,revision:state.current?.revision || 0,values:record,photo:state.photo,photoPath:state.current?.photo_path,userId:state.user.id});
     state.items = [...state.items.filter(i => i.id !== saved.id),saved];
-    state.dirty = false; $('#editor').close();
+    const savedFromBatch = batchEditing;
+    if (savedFromBatch) {
+      batch.index += batch.nextIsObject ? 1 : 2;
+      batch.nextIsObject = false;
+      batch.draftId = null;
+      if (batch.index >= batch.files.length) batch = null;
+      continueBatch = Boolean(batch);
+      batchEditing = false; renderBatchReference(); renderBatchControls();
+    }
+    state.dirty = false;
     if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
-    updateCategoryFilter(); render(); toast(`${saved.code} guardado.`);
-    // Recuperar vocabularios incorporados por este guardado y los demás teléfonos.
-    busy(false); await refresh();
+    updateCategoryFilter(); render();
+    toast(savedFromBatch && !continueBatch ? `${saved.code} guardado. Lote terminado.` : `${saved.code} guardado.`);
+    // Recuperar los vocabularios antes de abrir la ficha siguiente.
+    if (savedFromBatch) await refresh(true);
+    $('#editor').close();
+    if (!savedFromBatch) { busy(false); await refresh(); }
   } catch (error) { $('#form-error').textContent = errorText(error); }
   finally { busy(false); $('#next-step').textContent = state.step === 5 ? saveLabel() : 'Siguiente →'; }
+  if (continueBatch) await openBatchItem();
 });
 
 function download(blob,name) {
