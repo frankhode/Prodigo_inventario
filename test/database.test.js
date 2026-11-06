@@ -213,5 +213,26 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       await save(id,2,{...values,extra_photos:[]},cover);
       assert.equal((await clean()).rows.length,1);
     });
+    await t.test('Otro integrante puede intercambiar portada y adicional sin volver a subir los archivos',async () => {
+      await db.exec('reset role');
+      await db.exec(await readFile(new URL('../supabase/migrations/202610280008_choose_cover.sql',import.meta.url),'utf8'));
+      await as(users[0]);
+      const id = randomUUID(), cover = await upload(users[0],id);
+      const extra = `${users[0]}/${id}/${'c'.repeat(64)}.jpg`;
+      await db.query("insert into storage.objects values ('inventory-photos',$1)",[extra]);
+      const created = (await save(id,0,{...values,photo_crop:[0,0,.5,.5],extra_photos:[extra]},cover)).rows[0];
+      await as(users[1]);
+      const promoted = (await save(id,1,{...values,photo_crop:null,extra_photos:[cover]},extra)).rows[0];
+      assert.equal(promoted.code,created.code);
+      assert.equal(promoted.photo_path,extra);
+      assert.deepEqual(promoted.extra_photos,[cover]);
+      assert.equal(promoted.photo_crop,null);
+      assert.equal((await db.query('delete from storage.objects where name=$1 returning name',[cover])).rows.length,0);
+      await assert.rejects(save(id,1,{...values,extra_photos:[extra]},cover),/Otra persona modificó/);
+      const restored = (await save(id,2,{...values,extra_photos:[extra]},cover)).rows[0];
+      assert.equal(restored.photo_path,cover);
+      assert.deepEqual(restored.extra_photos,[extra]);
+      await assert.rejects(save(id,3,values,first.photo_path),/foto válida/);
+    });
   } finally { await db.close(); }
 });

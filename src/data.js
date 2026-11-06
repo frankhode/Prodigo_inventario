@@ -65,7 +65,7 @@ export function connect(config) {
       const result = check(await client.storage.from('inventory-photos').createSignedUrl(path,3600));
       photoUrls.set(path,{url:result.signedUrl,expires:Date.now()+45*60*1000}); return result.signedUrl;
     },
-    async save({id,revision,values,photo,photoPath,userId,gallery,previousExtraPhotos = []}) {
+    async save({id,revision,values,photo,photoPath,previousPhotoPath = photoPath,userId,gallery,previousExtraPhotos = []}) {
       const extraFields = [];
       if (values.original_number) extraFields.push('original_number');
       if (values.photo_crop) extraFields.push('photo_crop');
@@ -93,7 +93,7 @@ export function connect(config) {
       if (!saved?.id || !saved.code) throw Error('No se pudo confirmar el guardado. Conservá la ficha y reintentá.');
       // Limpiar solo archivos que ya no están vinculados, después de confirmar el guardado.
       const retained = new Set([saved.photo_path ?? path,...(saved.extra_photos ?? [])]);
-      const unused = [photoPath,...previousExtraPhotos].filter(path => path && !retained.has(path));
+      const unused = [...new Set([previousPhotoPath,...previousExtraPhotos])].filter(path => path && !retained.has(path));
       if (unused.length) {
         for (const path of unused) photoUrls.delete(path);
         await client.storage.from('inventory-photos').remove(unused).catch(() => {});

@@ -63,3 +63,19 @@
 #editor .wizard-progress progress{display:block;margin:0}
 #editor .wizard-body{padding-top:18px}
 @media(max-width:600px){#editor .wizard-progress{padding:6px 21px 0}#editor .wizard-body{padding-top:16px}}
+
+#items[data-size]{grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--thumbnail-min)),1fr))}
+#items[data-size=tiny]{--thumbnail-min:110px;gap:10px}
+#items[data-size=small]{--thumbnail-min:160px;gap:14px}
+#items[data-size=medium]{--thumbnail-min:225px}
+#items[data-size=large]{--thumbnail-min:320px}
+#items:is([data-size=tiny],[data-size=small]) .card-body{padding:10px}
+#items:is([data-size=tiny],[data-size=small]) h3{font-size:18px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#items[data-size=tiny] h3{font-size:15px}
+#items[data-size=tiny] :is(.card-meta,.card-bottom){display:none}
+#items[data-size=small] .card-meta{font-size:10px;margin-bottom:8px}
+#items[data-size=small] .card-edit{font-size:10px}
+#thumbnail-size{width:148px}
+.extra-photo .text-button{display:block;width:100%;min-height:36px;text-align:center}
+.extra-photo button:not(:last-child){color:var(--green)}
+@media(max-width:600px){#items[data-size=medium]{--thumbnail-min:140px}#items[data-size=large]{--thumbnail-min:220px}}

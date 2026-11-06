@@ -8,7 +8,7 @@ import { Zip, ZipPassThrough, strToU8 } from 'fflate';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const state = {items:[],terms:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoUrl:null,crop:null,gallery:[],dirty:false,busy:false,loading:false,user:null};
+const state = {items:[],terms:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoPath:null,photoUrl:null,crop:null,gallery:[],dirty:false,busy:false,loading:false,user:null};
 const stepTitles = ['Foto y objeto','Marca','Modelo','Fecha y numeración','Tipo','Destino y revisión'];
 const config = globalThis.PRODIGO_CONFIG;
 let db;
@@ -140,6 +140,17 @@ $$('.filter').forEach(button => button.addEventListener('click',() => {
 }));
 $('#reset-filters').addEventListener('click',() => { $('#search').value = ''; $('#category-filter').value = ''; $('.filter[data-destination=""]').click(); });
 $('#more-items').addEventListener('click',() => { state.limit += 24; render(); });
+const thumbnailSizes = ['tiny','small','medium','large'];
+function setThumbnailSize(value) {
+  const size = thumbnailSizes.includes(value) ? value : 'small';
+  $('#items').dataset.size = size;
+  $('#thumbnail-size').value = size;
+  try { localStorage.setItem('prodigo-thumbnail-size',size); } catch {}
+}
+let savedThumbnailSize;
+try { savedThumbnailSize = localStorage.getItem('prodigo-thumbnail-size'); } catch {}
+setThumbnailSize(savedThumbnailSize);
+$('#thumbnail-size').addEventListener('change',event => setThumbnailSize(event.target.value));
 
 const combos = ['category','brand','model','type'];
 function comboValue(field) { const select = $(`#${field}-select`); return select.value === '__new__' ? $(`#${field}-new`).value.trim() : select.value; }
@@ -205,6 +216,11 @@ function renderExtraPhotos() {
     if (photo.url) show(photo.url);
     else db.photoUrl(photo.path).then(url => { if (card.isConnected) show(url); })
       .catch(() => { image.alt = 'Foto no disponible'; });
+    const principal = element('button','text-button','Hacer principal');
+    principal.type = 'button';
+    principal.disabled = state.busy;
+    principal.setAttribute('aria-label',`Usar foto adicional ${index + 1} como principal`);
+    principal.addEventListener('click',() => makePrincipal(index));
     const remove = element('button','text-button','Quitar');
     remove.type = 'button';
     remove.disabled = state.busy;
@@ -217,10 +233,33 @@ function renderExtraPhotos() {
       renderExtraPhotos();
       $('#add-extra-photos').focus();
     });
-    card.append(link,remove);
+    card.append(link,principal,remove);
     return card;
   }));
   updateExtraPhotoControls();
+}
+
+async function makePrincipal(index) {
+  if (state.busy) return;
+  const selected = state.gallery[index];
+  if (!selected) return;
+  busy(true);
+  $('#form-error').textContent = '';
+  try {
+    const preview = selected.url ?? await db.photoUrl(selected.path);
+    const previous = state.photo
+      ? {blob:state.photo,url:state.photoUrl,crop:state.crop}
+      : state.photoPath ? {path:state.photoPath,crop:state.crop} : null;
+    state.gallery.splice(index,1,...(previous ? [previous] : []));
+    state.photo = selected.blob ?? null;
+    state.photoPath = selected.path ?? null;
+    state.photoUrl = selected.url ?? null;
+    state.crop = selected.crop ?? null;
+    showPhoto(preview);
+    state.dirty = true;
+    $('#photo-status').textContent = 'Foto principal seleccionada. Guardá la ficha para confirmar el cambio.';
+  } catch (error) { $('#form-error').textContent = errorText(error); }
+  finally { busy(false); renderExtraPhotos(); }
 }
 
 $('#add-extra-photos').addEventListener('click',() => $('#extra-photos-input').click());
@@ -255,6 +294,7 @@ function showStep(step) {
 }
 async function openEditor(item = null) {
   state.current = item; state.draftId = item?.id || (batchEditing ? (batch.draftId ??= crypto.randomUUID()) : crypto.randomUUID()); state.photo = null;
+  state.photoPath = item?.photo_path ?? null;
   clearExtraPhotos();
   state.gallery = (item?.extra_photos ?? []).map(path => ({path}));
   state.crop = validCrop(item?.photo_crop) ? item.photo_crop : null;
@@ -275,7 +315,7 @@ async function openEditor(item = null) {
   renderBatchReference();
   $('#editor').showModal(); showStep(0);
   if (item) {
-    try { const url = await db.photoUrl(item.photo_path); if ($('#editor').open && state.current?.id === item.id && !state.photo) showPhoto(url); }
+    try { const url = await db.photoUrl(item.photo_path); if ($('#editor').open && state.current?.id === item.id && state.photoPath === item.photo_path && !state.photo) showPhoto(url); }
     catch { $('#photo-status').textContent = 'No se pudo mostrar la foto. Podés conservarla o reemplazarla.'; }
   }
 }
@@ -479,12 +519,12 @@ $('#item-form').addEventListener('submit',async event => {
       if (state.step === step && $(`#${field}-select`).value === '__new__' && !comboValue(field)) throw Error('Escribí el nombre de la nueva opción o elegí otra del listado.');
     }
     if (state.step === 0) {
-      if (!state.photo && !state.current?.photo_path) throw Error('Tomá o elegí una foto.');
+      if (!state.photo && !state.photoPath) throw Error('Tomá o elegí una foto.');
       if (!comboValue('category')) throw Error('Elegí el objeto.');
     }
     if (state.step < 5) { showStep(state.step+1); return; }
     const record = {...validate(values()),photo_crop:state.crop}; busy(true); $('#next-step').textContent = 'Guardando…';
-    const saved = await db.save({id:state.draftId,revision:state.current?.revision || 0,values:record,photo:state.photo,photoPath:state.current?.photo_path,userId:state.user.id,
+    const saved = await db.save({id:state.draftId,revision:state.current?.revision || 0,values:record,photo:state.photo,photoPath:state.photoPath,previousPhotoPath:state.current?.photo_path,userId:state.user.id,
       gallery:state.gallery,previousExtraPhotos:state.current?.extra_photos});
     state.items = [...state.items.filter(i => i.id !== saved.id),saved];
     const savedFromBatch = batchEditing;
