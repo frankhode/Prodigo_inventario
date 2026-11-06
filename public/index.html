@@ -36,9 +36,8 @@
 <div id="no-results" class="empty compact" hidden><h3>No encontramos coincidencias.</h3><button class="text-button" id="reset-filters">Limpiar filtros</button></div><button id="more-items" class="button secondary" hidden>Mostrar más objetos</button>
 </section><footer class="footer"><span>PRÓDIGO / Objetos que merecen un registro.</span><span id="footer-count"></span></footer>
 </main></div>
-<dialog id="editor" aria-labelledby="editor-title"><form id="item-form" novalidate>
-<div class="dialog-header"><div><p class="eyebrow" id="editor-kicker">NUEVO OBJETO</p><h2 id="editor-title">Registrar un objeto</h2></div><button type="button" class="icon-button close-editor" aria-label="Cerrar ficha"><svg><use href="#i-close"/></svg></button></div>
-<nav class="wizard-progress" aria-label="Pasos de carga"><span id="step-caption" aria-live="polite">1 de 6 · Foto y objeto</span><progress id="step-progress" max="6" value="1"></progress></nav>
+<dialog id="editor" aria-label="Ficha de inventario"><form id="item-form" novalidate>
+<nav class="wizard-progress" aria-label="Pasos de carga"><div class="wizard-topline"><span id="step-caption" aria-live="polite">1 de 6 · Foto y objeto</span><div class="wizard-tools"><span id="editor-code" hidden></span><button type="button" class="icon-button close-editor" aria-label="Cerrar ficha"><svg><use href="#i-close"/></svg></button></div></div><progress id="step-progress" max="6" value="1"></progress></nav>
 <div class="wizard-body">
 <aside id="batch-reference" class="batch-reference" aria-label="Foto de la ficha" hidden>
 <p id="batch-position" class="hint"></p>

@@ -55,3 +55,11 @@
 .extra-photo a{display:block;background:#edeee7}
 .extra-photo img{display:block;width:100%;aspect-ratio:1;object-fit:contain}
 .extra-photo button{min-height:34px;color:var(--danger)}
+
+#editor .wizard-progress{position:sticky;top:0;z-index:2;background:white;padding:8px 30px 0}
+.wizard-topline{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px}
+.wizard-tools{display:flex;align-items:center;gap:10px}
+#editor-code{font:12px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--muted)}
+#editor .wizard-progress progress{display:block;margin:0}
+#editor .wizard-body{padding-top:18px}
+@media(max-width:600px){#editor .wizard-progress{padding:6px 21px 0}#editor .wizard-body{padding-top:16px}}

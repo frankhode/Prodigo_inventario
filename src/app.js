@@ -265,7 +265,9 @@ async function openEditor(item = null) {
   for (const field of combos) fillCombo(field,item?.[field] || '');
   $('#manufacture-date').value = item?.manufacture_date || ''; $('#original-number').value = item?.original_number || ''; $('#notes').value = item?.notes || '';
   if (item) $('#item-form').elements.destination.value = item.destination;
-  $('#editor-kicker').textContent = item?.code || 'NUEVO OBJETO'; $('#editor-title').textContent = item ? title(item) : 'Registrar un objeto';
+  $('#editor-code').textContent = item?.code || '';
+  $('#editor-code').hidden = !item;
+  $('#editor').setAttribute('aria-label',item ? `Editar ${item.code}, ${title(item)}` : 'Ficha de inventario');
   $('#item-dates').textContent = item ? `Alta: ${new Date(item.created_at).toLocaleDateString('es-AR')} · Revisión ${item.revision}` : '';
   $('#photo-stage').replaceChildren(element('span','',item ? 'Cargando foto…' : 'Una foto para reconocer el objeto.'));
   $('#photo-status').textContent = 'La portada se usa en la grilla.';
