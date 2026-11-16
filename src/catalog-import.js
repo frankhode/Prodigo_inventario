@@ -47,7 +47,7 @@ const photoParts = (images,frontId,frontIds) => {
   return pairs;
 };
 export function extractPublishedCatalog(data) {
-  if(data?.format!=='prodigo-collection'||!data.id||!data.images||typeof data.images!=='object')
+  if(data?.format!=='prodigo-online'||!data.id||!data.images||typeof data.images!=='object')
     throw Error('Formato de colección fotográfica incompatible.');
   const images=new Map(Object.entries(data.images));
   const fronts=[...images].filter(([id,item])=>
