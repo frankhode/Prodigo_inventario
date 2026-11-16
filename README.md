@@ -180,6 +180,34 @@ Confirmar la etiqueta registra fecha, usuario y evento en `inventory_label_event
 
 **Compatibilidad:** la función `delete_inventory_item` anterior pasa a registrar una anulación con motivo genérico, para que clientes antiguos no eliminen números sin historial. La migración no reconstruye eventos anteriores.
 
+## Numeración diferenciada por tipo de objeto (noviembre 2026)
+
+Las **máquinas de escribir** continúan usando los números `P000001` a `P000999`.
+Las **fotografías y los demás tipos de objeto** comienzan en `P001000`. Se
+conservan todas las fichas, códigos, anulaciones y números de lotes ya existentes.
+
+El contador de la secuencia histórica de máquinas **no se adelanta a 1000**.
+Por ejemplo, si el siguiente código era `P000367`, la próxima máquina recibe
+`P000367` aunque antes se incorporen 136 fotografías empezando en `P001000`.
+Ambas secuencias son independientes. Los números sin usar entre 367 y 999
+quedan **disponibles para máquinas**, nunca registrados como anulados.
+
+El módulo de carga masiva consulta el próximo código mediante una función
+de solo lectura. El servidor valida de nuevo el código exacto al reservar y
+serializa las altas individuales y masivas para evitar colisiones. No se
+derivan códigos individuales de fotografías del orden de su carpeta.
+
+**Migración necesaria:** `supabase/migrations/202611160004_number_pools.sql`.
+Aplicar **solo después de 001, 002 y 003** y tras verificar el respaldo.
+No publicar la interfaz de esta versión antes de instalar la migración.
+Esta migración crea una secuencia para fotografías y otros materiales;
+**no ejecuta `setval` sobre la secuencia antigua**. Se calcula el punto
+inicial del nuevo rango considerando fichas existentes, números anulados y
+números ya reservados a partir de 1000.
+
+Si en algún momento se agota el rango bajo de máquinas (P000999), el sistema
+lo informa y no mezcla los códigos altos sin una decisión administrativa.
+
 ## Catálogo conjunto: fotografías reservadas y máquinas de escribir
 
 Al confirmar la reserva de un lote de fotografías, sus imágenes aparecen
