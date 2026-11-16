@@ -30,7 +30,7 @@ declare
   original_name text;
   path text;
   extra_path text;
-  source_key text;
+  v_source_key text;
   v_number bigint;
   seq_last bigint;
   seq_called boolean;
@@ -223,9 +223,9 @@ grant execute on function public.assign_inventory_bulk_image(uuid,uuid,bigint,js
       <> (select count(distinct value) from jsonb_array_elements_text(coalesce(item->'extra_photos','[]'::jsonb)) as extras(value)) then
       raise exception 'Hay fotografías complementarias duplicadas.' using errcode='22023';
     end if;
-    source_key := nullif(btrim(coalesce(item->>'source_key','')),'');
-    if source_key is not null then
-      if length(source_key)>200 or source_key !~ '^prodigo-catalogador:[a-z0-9-]+:[a-f0-9]{64}
+    v_source_key := nullif(btrim(coalesce(item->>'source_key','')),'');
+    if v_source_key is not null then
+      if length(v_source_key)>200 or v_source_key !~ '^prodigo-catalogador:[a-z0-9-]+:[a-f0-9]{64}
   end loop;
   -- Bloquea INSERT normales, incluidos los clientes antiguos, mientras se
   -- obtiene un rango ininterrumpido de la secuencia compartida.
@@ -351,7 +351,7 @@ grant execute on function public.assign_inventory_bulk_image(uuid,uuid,bigint,js
       if jsonb_typeof(item->'source_data') is distinct from 'object' then
         raise exception 'Falta el registro de origen de la fotografía.' using errcode='22023';
       end if;
-      if exists(select 1 from public.inventory_bulk_images where source_key=source_key) then
+      if exists(select 1 from public.inventory_bulk_images existing_source where existing_source.source_key=v_source_key) then
         raise exception 'La fotografía ya está incorporada en otro lote.' using errcode='23505';
       end if;
     end if;
