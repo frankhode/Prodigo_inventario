@@ -465,6 +465,13 @@ $('#delete-item').addEventListener('click',async () => {
 });
 window.addEventListener('beforeunload',event => { if (batch || state.dirty || state.busy) { event.preventDefault(); event.returnValue = ''; } });
 const camera = new Camera($('#camera-video'));
+let cameraRatio = '1:1';
+document.querySelectorAll('[data-camera-ratio]').forEach(button => button.addEventListener('click',() => {
+  if (state.busy) return;
+  cameraRatio = button.dataset.cameraRatio;
+  $('#camera-frame').dataset.ratio = cameraRatio;
+  document.querySelectorAll('[data-camera-ratio]').forEach(option => option.setAttribute('aria-pressed',String(option === button)));
+}));
 function closeCamera() { camera.stop(); if ($('#camera-dialog').open) $('#camera-dialog').close(); }
 $('#camera-dialog').addEventListener('close',() => camera.stop());
 $('#camera-dialog').addEventListener('cancel',event => { event.preventDefault(); if (!state.busy) closeCamera(); });
@@ -487,7 +494,7 @@ $('#take-photo').addEventListener('click',async () => {
   $('#camera-message').textContent = 'Preparando foto…';
   try {
     const video = $('#camera-video');
-    const photo = await compressFrame(video,video.videoWidth,video.videoHeight);
+    const photo = await compressFrame(video,video.videoWidth,video.videoHeight,cameraRatio);
     if ($('#camera-dialog').open) { setPhoto(photo); closeCamera(); }
   } catch (error) { $('#camera-message').textContent = errorText(error); $('#camera-message').className = 'error'; }
   finally { busy(false); $$('#camera-dialog button').forEach(button => button.disabled = false); }

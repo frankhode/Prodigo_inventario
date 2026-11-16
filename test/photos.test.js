@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compressFrame, PHOTO_LIMIT, compressPhoto } from '../src/photos.js';
+import { compressFrame, PHOTO_LIMIT, compressPhoto, cameraCrop } from '../src/photos.js';
 import { Camera } from '../src/camera.js';
 
 function cameraFixture(getUserMedia) {
@@ -41,6 +41,29 @@ test('a failed video playback releases the active stream',async () => {
   video.play = async () => { throw Error('Playback failed'); };
   await assert.rejects(camera.start(),/Playback failed/);
   assert.equal(fixture.stopped(),1); assert.equal(video.srcObject,null);
+});
+
+test('camera formats crop symmetrically to 1:1 or 9:16',() => {
+  assert.deepEqual(cameraCrop(1280,720,'1:1'),{x:280,y:0,width:720,height:720});
+  assert.deepEqual(cameraCrop(900,1200,'9:16'),{x:112.5,y:0,width:675,height:1200});
+  assert.deepEqual(cameraCrop(720,1280,'9:16'),{x:0,y:0,width:720,height:1280});
+  assert.throws(() => cameraCrop(1280,720,'4:3'),/Formato de cámara/);
+});
+
+test('camera captures save exactly the preview crop without enlarging the image',async t => {
+  const original = globalThis.document;
+  t.after(() => { if (original === undefined) delete globalThis.document; else globalThis.document = original; });
+  const draws = [];
+  const canvas = {width:0,height:0,
+    getContext:() => ({fillRect(){},drawImage(...args){draws.push(args);}}),
+    toBlob(callback,type){callback(new Blob(['jpeg'],{type}));}};
+  globalThis.document = {createElement:() => canvas};
+  const video = {};
+  await compressFrame(video,1280,720,'1:1');
+  assert.deepEqual(draws[0],[video,280,0,720,720,0,0,720,720]);
+  await compressFrame(video,900,1200,'9:16');
+  assert.deepEqual(draws[1],[video,112.5,0,675,1200,0,0,675,1200]);
+  assert.equal(canvas.width,0); assert.equal(canvas.height,0);
 });
 
 test('large landscape and portrait frames use at most 1200 px and release canvas memory',async t => {
