@@ -162,8 +162,25 @@ Esto no reemplaza una prueba en un proyecto Supabase real: quedan por comprobar 
 
 La primera versión con Node/SQLite queda en el historial de Git, en el commit `7e49673025563f81a98cc0ebabdc8fb753881be7`. Esta versión no lee ni borra la antigua carpeta `data/`; si se usó el prototipo, conservarla antes de cambiar. La migración automática desde SQLite no está incluida.
 
-## Editar y borrar registros
+## Etiquetado físico (migración de noviembre de 2026)
 
-Cada tarjeta muestra **Editar ficha**. Al abrirla, se pueden modificar los datos o reemplazar la foto y terminar con **Guardar cambios**. Se conserva el identificador.
+El estado de una **etiqueta física** es independiente de la ficha de inventario. Toda ficha anterior a esta migración se considera **Pendiente de etiqueta**, sin modificar el código P ni su secuencia. En el listado se puede filtrar por **Todas las etiquetas / Sin etiquetar / Etiquetados** y utilizar el acceso directo desde el resumen. El estado se ve en las miniaturas y la ficha permite confirmar **Etiqueta colocada** o revertir una confirmación.
 
-Para habilitar **Borrar registro** en un proyecto existente, ejecutar una vez en SQL Editor [supabase/migrations/202610280004_delete_items.sql](supabase/migrations/202610280004_delete_items.sql). No modifica registros existentes. Los tres integrantes habilitados pueden borrar fichas de cualquier integrante; se exige confirmar el código y se rechaza el borrado si otra persona editó una revisión más reciente. El borrado es definitivo y los identificadores no se reutilizan. Los vocabularios compartidos se conservan. La foto se limpia mediante Storage después de confirmar el borrado de la ficha; si esa limpieza falla, se informa que el archivo quedó pendiente. Las copias exportadas previamente conservan sus datos.
+Confirmar la etiqueta registra fecha, usuario y evento en `inventory_label_events`. Se comprueba la revisión antes de cambiar el estado para impedir que dos operadores pisen sus cambios. El CSV exportado también contiene el estado, la fecha y el responsable.
+
+### Activación segura sobre una instalación existente
+
+1. **Hacer primero un respaldo con fotos del inventario** y conservarlo fuera de Supabase.
+2. Verificar que ya se ejecutaron las migraciones anteriores hasta `supabase/migrations/202610280008_choose_cover.sql`.
+3. Abrir Supabase → SQL Editor y ejecutar, una sola vez, [202611160001_labeling_audit.sql](supabase/migrations/202611160001_labeling_audit.sql). El SQL agrega campos y tablas de auditoría y sustituye el borrado; **no cambia ningún número existente**.
+4. Recién después, publicar la interfaz de esta rama (o integrar la rama en `main`). La versión nueva necesita la tabla `inventory_number_voids` para leer el listado. Hasta entonces, la versión publicada permanece sin cambios.
+5. Probar con una máquina de escribir: filtrar «Sin etiquetar», confirmar la etiqueta, comprobar el contador y revertir la confirmación. Hacer el ensayo de anulación únicamente con una ficha descartable.
+
+**Anulaciones:** al retirar una ficha hay que indicar un motivo de 3 a 300 caracteres. El código, su número, una instantánea de la ficha, el motivo, fecha y usuario quedan en `inventory_number_voids`, accesible solo a integrantes autorizados. La ficha deja de aparecer en el catálogo y se intenta retirar sus fotografías; ese código **nunca** se reutiliza. Los borrados previos a la migración no tienen una ficha histórica recuperable desde esta tabla.
+
+**Compatibilidad:** la función `delete_inventory_item` anterior pasa a registrar una anulación con motivo genérico, para que clientes antiguos no eliminen números sin historial. La migración no reconstruye eventos anteriores.
+
+### Próximas etapas
+
+La reserva de rangos para **carga masiva** y la asociación manual de fotografías físicas con etiquetas preimpresas se implementan separadamente. No asociar por orden de nombre de archivo ni asumir que la posición física coincide con el orden digital. La importación desde el catalogador fotográfico deberá conservar frente/reverso y sus metadatos; su repositorio original no se modificará.
+
