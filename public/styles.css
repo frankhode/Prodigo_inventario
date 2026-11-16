@@ -79,3 +79,19 @@
 .extra-photo .text-button{display:block;width:100%;min-height:36px;text-align:center}
 .extra-photo button:not(:last-child){color:var(--green)}
 @media(max-width:600px){#items[data-size=medium]{--thumbnail-min:140px}#items[data-size=large]{--thumbnail-min:220px}}
+
+/* Etiquetado físico del inventario: independiente del alta y de la catalogación. */
+.label-summary{display:flex;align-items:center;flex-wrap:wrap;gap:12px 22px;margin:-10px 0 24px;font-size:12px;color:var(--muted)}
+.label-summary strong{color:var(--ink);font-variant-numeric:tabular-nums}
+.label-summary .button{min-height:40px}
+.card-image{position:relative}
+.label-chip{position:absolute;z-index:1;left:7px;bottom:7px;border-radius:4px;padding:4px 7px;font-size:10px;line-height:1.2;font-weight:650;letter-spacing:.01em;background:rgba(255,255,255,.92);color:#645a46}
+.label-chip.labeled{background:#e4efe6;color:#245c36}
+.label-panel{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 30px;border-bottom:1px solid var(--line);background:#f6f6f1}
+.label-panel[hidden]{display:none}
+.label-status{font-size:12px;color:#7d6543}
+.label-status.confirmed{color:#245c36}
+.label-panel .button{font-size:12px;min-height:40px}
+.void-reason-label{display:block;margin:15px 0;font-size:13px}
+.void-reason-label textarea{display:block;resize:vertical;width:100%;margin-top:7px;min-height:85px;border:1px solid var(--line);border-radius:5px;padding:10px;font:inherit}
+@media(max-width:600px){.label-panel{padding:10px 21px;flex-wrap:wrap}.label-panel .button{width:100%}.label-summary{margin:-4px 0 18px}}
