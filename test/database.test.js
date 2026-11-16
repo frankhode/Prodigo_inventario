@@ -234,5 +234,57 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       assert.deepEqual(restored.extra_photos,[extra]);
       await assert.rejects(save(id,3,values,first.photo_path),/foto válida/);
     });
+
+    await t.test('Etiqueta física, historial y anulación sin reutilizar números',async () => {
+      await db.exec('reset role');
+      await db.exec(await readFile(new URL('../supabase/migrations/202611160001_labeling_audit.sql',import.meta.url),'utf8'));
+      await as(users[0]);
+      const original = (await db.query("select * from public.inventory_items where code='P000005'")).rows[0];
+      assert.equal(original.label_confirmed_at,null);
+      const label = (id,revision,labeled) => db.query(
+        'select * from public.set_inventory_label($1,$2,$3)',[id,revision,labeled]
+      );
+      const voidItem = (id,revision,reason) => db.query(
+        'select public.void_inventory_item($1,$2,$3) as photo_path',[id,revision,reason]
+      );
+      await as(users[3]);
+      await assert.rejects(label(original.id,original.revision,true),/No tenés acceso/);
+      assert.equal((await db.query('select * from public.inventory_number_voids')).rows.length,0);
+      await as(users[0]);
+      await assert.rejects(label(original.id,original.revision-1,true),/Otra persona modificó/);
+      const done = (await label(original.id,original.revision,true)).rows[0];
+      assert.equal(done.label_confirmed_by,users[0]);
+      assert.ok(done.label_confirmed_at);
+      assert.equal(done.revision,original.revision+1);
+      assert.equal((await label(done.id,done.revision,true)).rows[0].revision,done.revision);
+      const events = (await db.query('select labeled from public.inventory_label_events where item_id=$1',[done.id])).rows;
+      assert.deepEqual(events.map(event=>event.labeled),[true]);
+      await as(users[1]);
+      await assert.rejects(label(done.id,original.revision,false),/Otra persona modificó/);
+      const undone = (await label(done.id,done.revision,false)).rows[0];
+      assert.equal(undone.label_confirmed_at,null);
+      assert.equal(undone.label_confirmed_by,null);
+      assert.equal((await db.query('select * from public.inventory_label_events where item_id=$1',[done.id])).rows.length,2);
+      const redone = (await label(done.id,undone.revision,true)).rows[0];
+      await assert.rejects(voidItem(redone.id,redone.revision,'no'),/motivo de anulación/);
+      await assert.rejects(voidItem(redone.id,undone.revision,'Registro duplicado'),/Otra persona modificó/);
+      const removed = (await voidItem(redone.id,redone.revision,'Registro duplicado')).rows[0];
+      assert.equal(removed.photo_path,redone.photo_path);
+      assert.equal((await db.query('select id from public.inventory_items where id=$1',[done.id])).rows.length,0);
+      const tombstone = (await db.query('select * from public.inventory_number_voids where number=$1',[done.number])).rows[0];
+      assert.equal(tombstone.code,done.code);
+      assert.equal(tombstone.reason,'Registro duplicado');
+      assert.equal(tombstone.voided_by,users[1]);
+      assert.equal(tombstone.snapshot.label_confirmed_by,users[1]);
+      assert.equal((await voidItem(done.id,redone.revision,'Registro duplicado')).rows[0].photo_path,null);
+      await assert.rejects(db.query('insert into public.inventory_number_voids(number,item_id,snapshot,reason,voided_by) values ($1,$2,$3,$4,$5)',[999999,randomUUID(),'{}','Intrusión',users[0]]),/permission denied/);
+      await as(users[3]);
+      assert.equal((await db.query('select * from public.inventory_number_voids')).rows.length,0);
+      await as(users[0]);
+      const id = randomUUID(), path = await upload(users[0],id);
+      const next = (await save(id,0,values,path)).rows[0];
+      assert.ok(next.number > done.number);
+      assert.equal((await db.query('select * from public.inventory_number_voids where number=$1',[done.number])).rows.length,1);
+    });
   } finally { await db.close(); }
 });
