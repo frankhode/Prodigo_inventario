@@ -24,7 +24,7 @@ export function connect(config) {
     const rows = [];
     for (let offset = 0;; offset += 500) {
       let query = client.from(table).select('*');
-      query = table === 'inventory_items' ? query.order('number') : query.order('kind').order('category_key').order('parent_key').order('name_key');
+      query = table === 'inventory_items' || table === 'inventory_number_voids' ? query.order('number') : query.order('kind').order('category_key').order('parent_key').order('name_key');
       const result = check(await query.range(offset,offset+499));
       rows.push(...result); if (result.length < 500) return rows;
     }
@@ -56,8 +56,8 @@ export function connect(config) {
       const user = check(await client.auth.getUser()).user;
       const member = check(await client.from('inventory_members').select('display_name').eq('user_id',user.id).maybeSingle());
       if (!member) throw Error('Tu cuenta todavía no tiene acceso al inventario. Pedile al administrador que la habilite.');
-      const [items,terms] = await Promise.all([all('inventory_items'),all('inventory_terms')]);
-      return {user,member,items,terms};
+      const [items,terms,voids] = await Promise.all([all('inventory_items'),all('inventory_terms'),all('inventory_number_voids')]);
+      return {user,member,items,terms,voids};
     },
     async photoUrl(path) {
       const cached = photoUrls.get(path);
@@ -100,8 +100,15 @@ export function connect(config) {
       }
       return saved;
     },
-    async remove({id,revision,photoPath,extraPhotos = []}) {
-      const result = await client.rpc('delete_inventory_item',{p_id:id,p_revision:revision});
+    async setLabel({id,revision,labeled}) {
+      const result = await client.rpc('set_inventory_label',{p_id:id,p_revision:revision,p_labeled:labeled});
+      if (result.error?.code === 'PGRST202') throw Error('El etiquetado todavía no está habilitado en Supabase. Aplicá la migración de etiquetado.');
+      const saved = check(result);
+      if (!saved?.id || typeof saved.revision !== 'number') throw Error('No se pudo confirmar el estado de la etiqueta.');
+      return saved;
+    },
+    async remove({id,revision,photoPath,extraPhotos = [],reason = 'Anulación solicitada desde el inventario'}) {
+      const result = await client.rpc('void_inventory_item',{p_id:id,p_revision:revision,p_reason:reason});
       if (result.error?.code === 'PGRST202') throw Error('La opción de borrar todavía no está habilitada. Consultá a Pródigo.');
       const path = check(result) || photoPath;
       const paths = [...new Set([path,...extraPhotos].filter(Boolean))];
