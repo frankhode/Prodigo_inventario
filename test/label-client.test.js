@@ -25,5 +25,5 @@ test('rechaza el estado no disponible o una ficha vencida',async t => {
   const db = connect(config);
   await assert.rejects(db.setLabel({id:example.id,revision:3,labeled:true}),/migración de etiquetado/);
   missing = false;
-  await assert.rejects(db.setLabel({id:example.id,revision:3,labeled:false}),/Otra persona modificó/);
+  await assert.rejects(db.setLabel({id:example.id,revision:3,labeled:false}),error => error.code === '40001' && /Otra persona modificó/.test(error.message));
 });
