@@ -1,3 +1,4 @@
+import { retryableTransferError } from './bulk-retry.js';
 import { createClient } from '@supabase/supabase-js';
 
 export function connect(config) {
@@ -180,12 +181,32 @@ export function connect(config) {
     async stageBulkPhoto(id,userId,blob) {
       return uploadPhoto(id,userId,blob);
     },
+    async getBulkBatch(id) {
+      return check(await client.from('inventory_bulk_batches')
+        .select('*').eq('id',id).maybeSingle());
+    },
     async createBulkBatch({id,expectedStart,common,images}) {
-      const result = await client.rpc('create_inventory_bulk_batch',{
-        p_id:id,p_expected_start:expectedStart,p_common:common,p_images:images
-      });
-      if (result.error?.code === 'PGRST202') throw Error('La carga masiva todavía no está habilitada en Supabase. Aplicá la nueva migración.');
-      return check(result);
+      const payload={p_id:id,p_expected_start:expectedStart,p_common:common,p_images:images};
+      try {
+        const result=await client.rpc('create_inventory_bulk_batch',payload);
+        if(result.error?.code==='PGRST202') throw Error('La carga masiva todavía no está habilitada en Supabase. Aplicá la nueva migración.');
+        return check(result);
+      } catch(error) {
+        // Una respuesta 520 puede llegar DESPUÉS de que la base confirmó.
+        // Recuperar por el UUID original; nunca generar otro lote en silencio.
+        if (!retryableTransferError(error)) throw error;
+        let recorded=null;
+        try {recorded=await this.getBulkBatch(id);}catch{}
+        if(recorded){
+          if(recorded.total!==images.length||Number(recorded.start_number)!==expectedStart)
+            throw Error('El lote ya existe con otros datos. Revisá su numeración antes de continuar.');
+          return recorded;
+        }
+        const uncertain=Error('La comunicación con Supabase se interrumpió durante la reserva. No sabemos si se creó el lote. Revisá “Lotes existentes” o consultá la tabla inventory_bulk_batches antes de reintentar; NO generes una reserva nueva.');
+        uncertain.cause=error;
+        uncertain.code='BULK_RESERVATION_UNCERTAIN';
+        throw uncertain;
+      }
     },
     async assignBulkImage({batchId,imageId,expectedNumber,details}) {
       const result = await client.rpc('assign_inventory_bulk_image',{
