@@ -13,6 +13,7 @@ const media=id=>({
 const record=(side,parent='',extra={})=>({side,parent,...extra});
 const fixture={
   format:'prodigo-online',id:'bixio',name:'F. Bixio y Cia.',version:'test',updated:'2026-10-26T20:00:00Z',
+  signatures:{'BIX-01':'F. Bixio & Cía. — relieve tipográfico'},
   images:{
     [id1]:{status:'done',relative:'img024.tif',record:record('Frente','',{
       number:'000127',author:'Florencio Bixio',date:'ca. 1900',kind:'Retrato',
@@ -43,6 +44,7 @@ test('El catalogador importa un solo objeto por frente y conserva vínculos en c
   assert.deepEqual(first.files.map(part=>part.side),['Frente','Reverso','Otros']);
   assert.deepEqual(first.sourceData.parts.map(part=>part.original_filename),['img024b.tif','img024c.tif']);
   assert.equal(first.sourceData.record.signature,'BIX-01');
+  assert.equal(first.sourceData.signature_label,'F. Bixio & Cía. — relieve tipográfico');
   assert.deepEqual(first.sourceData.record.highlights,['Vestimenta']);
   assert.equal(first.imageValues.original_number,'000127');
   assert.equal(first.imageValues.manufacture_date,'ca. 1900');
