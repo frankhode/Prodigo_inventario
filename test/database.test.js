@@ -450,8 +450,8 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       assert.equal(Number(batch.end_number),1002);
       const slots=(await db.query('select number from public.inventory_bulk_slots where batch_id=$1 order by ordinal',[batchId])).rows;
       assert.deepEqual(slots.map(x=>Number(x.number)),[1001,1002]);
-      const machineId=randomUUID(),machinePath=await upload(users[1],machineId);
       await as(users[1]);
+      const machineId=randomUUID(),machinePath=await upload(users[1],machineId);
       const machine=(await save(machineId,0,values,machinePath)).rows[0];
       assert.equal(Number(machine.number),machineBefore);
       assert.equal(Number((await next('Fotografía')).rows[0].next),1003);
