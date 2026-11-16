@@ -6,7 +6,7 @@ const config = {supabaseUrl:'https://fixture.example.test',publishableKey:'sb_pu
 const item = {id:'22222222-2222-4222-8222-222222222222',revision:3,photoPath:'user/item/photo.jpg'};
 const json = (body,status=200) => new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}});
 
-test('el cliente borra por revisión antes de limpiar la foto y permite reintentos',async t => {
+test('el cliente anula por revisión antes de limpiar la foto y permite reintentos',async t => {
   const calls = []; let alreadyDeleted = false;
   t.mock.method(globalThis,'fetch',async (url,options) => {
     calls.push({url:String(url),body:JSON.parse(options.body)});
@@ -15,8 +15,8 @@ test('el cliente borra por revisión antes de limpiar la foto y permite reintent
   });
   const db = connect(config);
   assert.deepEqual(await db.remove(item),{photoCleanupFailed:false});
-  assert.ok(calls[0].url.endsWith('/rpc/delete_inventory_item'));
-  assert.deepEqual(calls[0].body,{p_id:item.id,p_revision:3});
+  assert.ok(calls[0].url.endsWith('/rpc/void_inventory_item'));
+  assert.deepEqual(calls[0].body,{p_id:item.id,p_revision:3,p_reason:'Anulación solicitada desde el inventario'});
   assert.deepEqual(calls[1].body,{prefixes:[item.photoPath]});
   alreadyDeleted = true;
   assert.deepEqual(await db.remove(item),{photoCleanupFailed:false});
