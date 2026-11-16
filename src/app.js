@@ -110,7 +110,7 @@ function visibleItems() {
   const query = normalize($('#search').value.trim()), category = $('#category-filter').value, label = $('#label-filter').value;
   const visible = state.items.filter(i => (!state.destination || i.destination === state.destination) && (!category || i.category === category)
     && (label === 'all' || Boolean(i.label_confirmed_at) === (label === 'done'))
-    && (!query || normalize([i.code,i.category,i.brand,i.model,i.manufacture_date,i.original_number,i.type,i.notes,destinations[i.destination]].join(' ')).includes(query)));
+    && (!query || normalize([i.code,i.category,i.brand,i.model,i.manufacture_date,i.original_number,i.type,i.notes,i.catalog_source?.collection_name,JSON.stringify(i.catalog_source?.record||{}),destinations[i.destination]].join(' ')).includes(query)));
   if ($('#sort').value === 'brand') return visible.sort((a,b) => a.brand.localeCompare(b.brand,'es') || a.model.localeCompare(b.model,'es') || a.number-b.number);
   return visible.sort((a,b) => $('#sort').value === 'old' ? a.number-b.number : b.number-a.number);
 }
@@ -137,6 +137,7 @@ function card(item) {
   const body = element('div','card-body');
   body.append(element('span','card-code',item.code),element('h3','',title(item)),element('p','card-meta',[item.category,item.manufacture_date,item.type,item.original_number && `N.º ${item.original_number}`].filter(Boolean).join(' · ')));
   const bottom = element('div','card-bottom'); bottom.append(element('span',`badge ${item.destination}`,destinations[item.destination]),element('span','card-edit','Editar ficha ↗'));
+  if(item.catalog_source?.collection_name) body.append(element('span','catalog-source-chip',item.catalog_source.collection_name));
   body.append(bottom); button.append(picture,body); button.addEventListener('click',() => openEditor(item)); return button;
 }
 for (const id of ['search','sort','category-filter','label-filter']) $(`#${id}`).addEventListener(id === 'search' ? 'input' : 'change',() => { state.limit = 24; render(); });
@@ -308,6 +309,59 @@ $('#extra-photos-input').addEventListener('change',async event => {
   finally { busy(false); renderExtraPhotos(); }
 });
 
+function renderCatalogSource(item) {
+  const panel=$('#catalog-source-section');
+  const source=item?.catalog_source;
+  const record=source?.record;
+  panel.hidden=source?.system!=='prodigo-catalogador'||!record;
+  panel.open=false;
+  const details=$('#catalog-source-details');
+  details.replaceChildren();
+  if(panel.hidden)return;
+  $('#catalog-source-collection').textContent=source.collection_name||'';
+  const terms=[
+    ['Colección',source.collection_name],
+    ['Archivo original',source.original_filename],
+    ['N.º original',record.number],
+    ['Identificador',record.identifier],
+    ['Autor / fotógrafo',record.author],
+    ['Fecha',record.date],
+    ['Tipo de imagen',record.kind],
+    ['Tipo de retrato',record.portrait],
+    ['Encuadre',record.frame],
+    ['Posición',record.direction],
+    ['Ambiente',record.environment],
+    ['Color',record.color],
+    ['Firma',record.signature],
+    ['Personas',record.people],
+    ['Personas identificadas',record.identifiedPeople],
+    ['Objetos',record.objects],
+    ['Destacados',record.highlights],
+    ['Notas',record.notes]
+  ];
+  const dl=element('dl','catalog-source-list');
+  for(const [name,value] of terms) {
+    const label=Array.isArray(value)?value.join(', '):typeof value==='object'&&value
+      ?JSON.stringify(value):String(value??'');
+    if(!label.trim())continue;
+    dl.append(element('dt','',name),element('dd','',label));
+  }
+  details.append(dl);
+  const parts=Array.isArray(source.parts)?source.parts:[];
+  if(parts.length) {
+    details.append(element('h4','',`Imágenes vinculadas (${parts.length})`));
+    for(const part of parts) {
+      const info=element('div','catalog-source-part');
+      info.append(element('strong','',`${part.record?.side||'Otra parte'} · ${part.original_filename||''}`));
+      for(const key of ['number','date','notes']) {
+        if(part.record?.[key])info.append(element('p','',`${key==='number'?'N.º original':key==='date'?'Fecha':'Notas'}: ${part.record[key]}`));
+      }
+      details.append(info);
+    }
+  }
+  details.append(element('p','hint','Estos datos proceden de una copia de la ficha del catalogador. Las modificaciones posteriores del catalogador no se sincronizan automáticamente.'));
+}
+
 function saveLabel() { return state.current ? 'Guardar cambios' : 'Guardar objeto'; }
 function renderLabelControls() {
   const item = state.current;
@@ -350,6 +404,7 @@ async function openEditor(item = null) {
   $('#crop-button').hidden = true;
   $('#delete-item').hidden = !item;
   renderLabelControls();
+  renderCatalogSource(item);
   if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
   state.dirty = false; $('#item-form').reset();
   for (const field of combos) fillCombo(field,item?.[field] || '');
