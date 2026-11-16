@@ -32,7 +32,9 @@ const photoParts = (images,frontId,frontIds) => {
     while(parent&&!seen.has(parent)) {
       seen.add(parent);
       if(frontIds.has(parent)) {root=parent;break;}
-      parent=images.get(parent)?.record?.parent;
+      const ancestor=images.get(parent);
+      if(!ancestor||ancestor.status!=='done'||ancestor.excluded||!ancestor.media?.src)break;
+      parent=ancestor.record?.parent;
     }
     if(root===frontId)pairs.push({id,item});
   }
