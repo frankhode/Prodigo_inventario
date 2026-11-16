@@ -146,6 +146,24 @@ $$('.filter').forEach(button => button.addEventListener('click',() => {
 $('#reset-filters').addEventListener('click',() => { $('#search').value = ''; $('#category-filter').value = ''; $('#label-filter').value = 'all'; $('.filter[data-destination=""]').click(); });
 $('#show-unlabeled').addEventListener('click',() => { $('#label-filter').value = 'pending'; state.limit = 24; render(); document.querySelector('.collection').scrollIntoView({behavior:'smooth',block:'start'}); });
 $('#more-items').addEventListener('click',() => { state.limit += 24; render(); });
+$('#show-voids').addEventListener('click',() => {
+  const list = $('#void-history-list');
+  list.replaceChildren();
+  const records = [...state.voids].sort((a,b) => b.number - a.number);
+  if (!records.length) list.append(element('p','hint','Todavía no hay números anulados desde que se activó el historial.'));
+  for (const record of records) {
+    const row = element('article','void-history-row');
+    row.append(element('strong','',record.code));
+    const old = record.snapshot || {};
+    row.append(element('span','',title(old)));
+    row.append(element('p','',record.reason));
+    row.append(element('small','',new Date(record.voided_at).toLocaleString('es-AR')));
+    list.append(row);
+  }
+  $('#void-history').showModal();
+});
+$('#close-void-history').addEventListener('click',() => $('#void-history').close());
+
 const thumbnailSizes = ['tiny','small','medium','large'];
 function setThumbnailSize(value) {
   const size = thumbnailSizes.includes(value) ? value : 'small';
