@@ -72,8 +72,11 @@ export function extractPublishedCatalog(data) {
       system:'prodigo-catalogador',collection_id:data.id,collection_name:data.name,
       collection_version:data.version,source_id:id,original_filename:fileName(item),
       original_updated:item.updated||null,record:structuredClone(original),
+      signature_label:data.signatures?.[original.signature]||null,
       parts:parts.map(({id,item:p})=>({
-        id,original_filename:fileName(p),record:structuredClone(p.record),updated:p.updated||null
+        id,original_filename:fileName(p),record:structuredClone(p.record),
+        signature_label:data.signatures?.[p.record?.signature]||null,
+        updated:p.updated||null
       }))
     };
     const imageValues={
