@@ -128,8 +128,8 @@
     <label>Tipo<input id="bulk-type" maxlength="120" placeholder="Retrato, gabinete…"></label>
     <label class="bulk-wide">Notas generales<textarea id="bulk-notes" rows="2" maxlength="4000"></textarea></label>
   </div>
-  <div class="bulk-number-check"><label>Primera etiqueta preimpresa sin usar *<input id="bulk-start-number" type="text" inputmode="text" maxlength="7" placeholder="P000401" required></label>
-  <p class="hint">El sistema comprobará que el próximo correlativo de Supabase coincida. Si es distinto, no reservará números. Al confirmar, las fotografías aparecerán en el catálogo junto con los demás objetos; el número de cada fotografía se asociará solamente durante el etiquetado físico.</p></div>
+  <div class="bulk-number-check"><label>Primera etiqueta preimpresa sin usar *<input id="bulk-start-number" type="text" inputmode="text" maxlength="7" placeholder="P001000" required></label><p id="bulk-number-range-hint" class="hint" role="status"></p>
+  <p class="hint">El sistema comprobará el correlativo del rango correspondiente al tipo de objeto. Las máquinas conservarán P000001–P000999 y las fotografías comenzarán desde P001000. Confirmar reserva los números definitivamente; cada fotografía recibe su número individual durante el etiquetado físico.</p></div>
   <div class="bulk-footer"><button type="button" class="button subtle" id="bulk-meta-back">Volver a imágenes</button><button type="button" class="button primary" id="bulk-create">Subir imágenes y reservar números</button></div>
 </section>
 <section data-bulk-view="uploading" class="bulk-body" hidden><h3>Preparando el lote</h3><div id="bulk-upload-progress" role="status" class="hint">Preparando archivos…</div></section>
