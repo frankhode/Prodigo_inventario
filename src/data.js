@@ -100,6 +100,22 @@ export function connect(config) {
       }
       return saved;
     },
+    async importedCatalogKeys(collectionId) {
+      if (!/^[a-z0-9-]+$/.test(collectionId)) throw Error('Colección inválida.');
+      const keys = new Set();
+      const prefix = `prodigo-catalogador:${collectionId}:`;
+      for(let offset=0;;offset+=500) {
+        const result=await client.from('inventory_bulk_images')
+          .select('source_key').like('source_key',prefix+'%')
+          .order('source_key').range(offset,offset+499);
+        if(result.error?.code==='42703'||result.error?.code==='PGRST204')
+          throw Error('Para importar el catalogador falta aplicar la migración 202611160003_catalog_import.sql en Supabase.');
+        const rows=check(result);
+        for(const row of rows)if(row.source_key)keys.add(row.source_key);
+        if(rows.length<500)break;
+      }
+      return keys;
+    },
     async listBulkBatches() {
       return check(await client.from('inventory_bulk_batches').select('*')
         .order('created_at',{ascending:false}).limit(100));
