@@ -14,7 +14,7 @@ export function parsePhysicalLabel(input) {
   if (!Number.isSafeInteger(number) || number < 1 || number > 999999) throw Error('Número de etiqueta fuera de rango.');
   return number;
 }
-export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,notify}) {
+export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,onBatchCreated,notify}) {
   const dialog = $('#bulk-dialog');
   let stage = [];
   let uploads = new Map();
@@ -67,6 +67,19 @@ export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,not
     dialog.showModal();
     view('home');
     await listBatches();
+  }
+  async function openBatchFromCatalog(batchId,imageId) {
+    if (!getDb()) return;
+    if(!dialog.open)dialog.showModal();
+    view('home');
+    try {
+      const batches=await getDb().listBulkBatches();
+      const selected=batches.find(entry=>entry.id===batchId);
+      if(!selected)throw Error('Este lote ya no está disponible. Actualizá el catálogo.');
+      await loadBatch(selected);
+      const image=images.find(entry=>entry.id===imageId);
+      if(image)openImage(image);
+    }catch(error){message(error);}
   }
   async function listBatches() {
     $('#bulk-batches').replaceChildren();
@@ -254,6 +267,7 @@ export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,not
       });
       releaseStage();
       await loadBatch(result);
+      await onBatchCreated?.();
       notify(`Lote creado: ${fmt(result.start_number)}–${fmt(result.end_number)}.`);
     } catch (error) {
       // Errores antes de confirmación SQL no crean fichas; las imágenes quedan
@@ -422,4 +436,5 @@ export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,not
   $('#bulk-work-back').addEventListener('click',async()=>{view('home');await listBatches();});
   $('#bulk-detail-back').addEventListener('click',()=>{focused=null;renderWork();view('work');});
   $('#bulk-detail-save').addEventListener('click',confirmPhysicalLabel);
+  return {openBatchFromCatalog};
 }
