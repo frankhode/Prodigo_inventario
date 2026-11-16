@@ -116,6 +116,24 @@ export function connect(config) {
       }
       return keys;
     },
+    async pendingBulkCatalog() {
+      const batches=[];
+      for(let offset=0;;offset+=100) {
+        const response=check(await client.from('inventory_bulk_batches').select('*')
+          .order('created_at',{ascending:false}).range(offset,offset+99));
+        batches.push(...response);
+        if(response.length<100)break;
+      }
+      if(!batches.length)return [];
+      const groups=await Promise.all(batches.map(async batch=>{
+        const [images,slots]=await Promise.all([
+          client.from('inventory_bulk_images').select('*').eq('batch_id',batch.id).order('ordinal'),
+          client.from('inventory_bulk_slots').select('image_id').eq('batch_id',batch.id)
+        ]);
+        return {batch,details:{images:check(images),slots:check(slots)}};
+      }));
+      return groups;
+    },
     async listBulkBatches() {
       return check(await client.from('inventory_bulk_batches').select('*')
         .order('created_at',{ascending:false}).limit(100));

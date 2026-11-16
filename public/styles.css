@@ -201,3 +201,11 @@
 .catalog-source-part p{white-space:pre-wrap;margin:5px 0;color:var(--muted)}
 .catalog-source-chip{display:block;margin:5px 0 0;font-size:10px;color:var(--muted)}
 @media(max-width:600px){.catalog-source-panel{padding:8px 21px}.catalog-source-list{grid-template-columns:105px minmax(0,1fr);gap:6px 10px}}
+
+/* Las fotografías de lotes reservados comparten la misma grilla, pero todavía
+   no se les atribuye un identificador P individual hasta la vinculación física. */
+.card-unlinked{border-style:dashed;border-color:#aa8e4f}
+.label-chip.unlinked{background:#fff0d0;color:#77510f}
+.card-unlinked .card-code{color:#895e1a}
+.label-summary #show-bulk-unlinked{font-size:12px;min-height:40px;display:inline-flex;align-items:center;gap:5px}
+.label-summary #show-bulk-unlinked strong{font-variant-numeric:tabular-nums}

@@ -180,6 +180,35 @@ Confirmar la etiqueta registra fecha, usuario y evento en `inventory_label_event
 
 **Compatibilidad:** la función `delete_inventory_item` anterior pasa a registrar una anulación con motivo genérico, para que clientes antiguos no eliminen números sin historial. La migración no reconstruye eventos anteriores.
 
+## Catálogo conjunto: fotografías reservadas y máquinas de escribir
+
+Al confirmar la reserva de un lote de fotografías, sus imágenes aparecen
+**en la misma grilla visual** que las máquinas de escribir existentes.
+Las fotografías conservan autor, fecha, numeración original, procedencia,
+firma y vínculos frente/reverso; se pueden localizar por los filtros y la
+búsqueda habituales.
+
+El contador **Piezas en catálogo** incluye tanto las fichas numeradas como
+las imágenes de lotes reservados sin número individual asociado. El filtro
+**En lote, sin número** permite ver solamente estas últimas. El listado
+distingue explícitamente **SIN N.º ASOCIADO** de los códigos definitivos
+`P000001`, `P000002`, etc. Cada imagen muestra el rango reservado del lote,
+pero **jamás un número concreto inferido por posición de archivo**.
+
+Al pulsar una imagen pendiente se abre directamente su ficha dentro del
+módulo de etiquetado. La identificación física vincula el siguiente número
+disponible y, después de colocar la etiqueta, confirma el estado. Una vez
+vinculada, la fotografía se retira de los pendientes de lote y queda como
+registro normal del inventario, con su número propio.
+
+**Regla de seguridad:** los números se reservan en Supabase cuando se
+confirma el lote. Ni la previsualización ni la selección de una carpeta
+consumen números. **No confirmes el lote sin comprobar la primera etiqueta
+preimpresa disponible**, porque el rango reservado no se recupera.
+
+Esta ampliación utiliza las tablas existentes de las migraciones de
+etiquetado, carga masiva e importación fotográfica: no precisa un nuevo SQL.
+
 ## Importación del catalogador fotográfico (tercera etapa)
 
 La opción **Nueva carga masiva → Consultar colecciones fotográficas** incorpora los
