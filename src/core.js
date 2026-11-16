@@ -21,10 +21,10 @@ export function validate(values) {
   return Object.fromEntries(fields.map(field => [field,values[field].trim()]));
 }
 export function csv(items) {
-  const columns = ['Identificador','Objeto','Marca','Modelo','Fecha','N.º de serie / numeración original','Tipo','Destino','Notas','Foto','Alta','Modificación','Creado por','Modificado por','Fotos adicionales'];
+  const columns = ['Identificador','Objeto','Marca','Modelo','Fecha','N.º de serie / numeración original','Tipo','Destino','Notas','Foto','Alta','Modificación','Creado por','Modificado por','Fotos adicionales','Estado de etiquetado','Fecha de etiquetado','Etiqueta confirmada por'];
   // Evitar que Excel interprete como fórmulas los valores ingresados por usuarios.
   const cell = value => '"' + String(value ?? '').replace(/^[\s\u0000-\u001f]*[=+@-]/, match => "'" + match).replaceAll('"','""') + '"';
-  const rows = items.map(i => [i.code,i.category,i.brand,i.model,i.manufacture_date,i.original_number,i.type,destinations[i.destination],i.notes,photoName(i),i.created_at,i.updated_at,i.created_by,i.updated_by,photoFiles(i).slice(1).map(file => file.name).join(', ')]);
+  const rows = items.map(i => [i.code,i.category,i.brand,i.model,i.manufacture_date,i.original_number,i.type,destinations[i.destination],i.notes,photoName(i),i.created_at,i.updated_at,i.created_by,i.updated_by,photoFiles(i).slice(1).map(file => file.name).join(', '),i.label_confirmed_at ? 'Etiquetado' : 'Pendiente',i.label_confirmed_at ?? '',i.label_confirmed_by ?? '']);
   return '\ufeff' + [columns,...rows].map(row => row.map(cell).join(';')).join('\r\n');
 }
 export function exportRecord(item) {
