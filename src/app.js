@@ -333,6 +333,7 @@ function renderCatalogSource(item) {
     ['Ambiente',record.environment],
     ['Color',record.color],
     ['Firma',record.signature],
+    ['Descripción de firma',source.signature_label],
     ['Personas',record.people],
     ['Personas identificadas',record.identifiedPeople],
     ['Objetos',record.objects],
