@@ -180,6 +180,57 @@ Confirmar la etiqueta registra fecha, usuario y evento en `inventory_label_event
 
 **Compatibilidad:** la función `delete_inventory_item` anterior pasa a registrar una anulación con motivo genérico, para que clientes antiguos no eliminen números sin historial. La migración no reconstruye eventos anteriores.
 
+## Importación del catalogador fotográfico (tercera etapa)
+
+La opción **Nueva carga masiva → Consultar colecciones fotográficas** incorpora los
+registros completos publicados en el catálogo de
+[Pródigo · Catalogador](https://github.com/frankhode/prodigo-catalogador).
+
+- Seleccionar **F. Bixio y Cía.** o **Bixio y Castiglioni**. La app lee el índice,
+  JSON y WebP públicos desde `frankhode/prodigo-catalogador`, sin pedir un token
+  de GitHub ni modificar los TIFF originales.
+- Se prepara **una ficha por frente catalogado** (`status=done`, no excluido).
+  Los reversos, tapas, interiores y otras partes publicadas se reúnen únicamente
+  cuando `record.parent` lleva a ese frente (también admite cadenas de enlaces).
+- Las partes sin frente válido se informan como **no vinculadas** y no se importan
+  arbitrariamente. Tampoco se incorporan pendientes o excluidos.
+- La grilla permite excluir frentes antes de reservar números. Los metadatos de
+  autor, fecha, número original, tipo y notas se proponen como valores individuales.
+  Además, se conserva una copia completa de los metadatos del frente y sus partes,
+  incluyendo firmas, objetos, personas, color, detalles del retrato, notas y
+  nombres originales, en `catalog_source`.
+- Las imágenes WebP publicadas se descargan y se convierten en JPEG reducidos,
+  iguales a los que usa el inventario. Cada frente y sus partes se almacenan como
+  foto principal y fotos adicionales en Storage privado.
+- La clave `prodigo-catalogador:<colección>:<id>` impide incorporar dos veces
+  el mismo frente, incluso si el lote no se terminó de etiquetar. Importar desde
+  GitHub no crea inventarios hasta confirmar un lote.
+- La **numeración sigue siendo independiente del orden digital**: primero se
+  reserva el rango del lote, después se identifica cada fotografía física,
+  se vincula a la etiqueta preimpresa y se confirma su colocación. Se puede
+  trabajar sobre el lote durante varios días.
+
+### Activación en Supabase
+
+Antes de publicar el código, ejecutar una única vez
+[`supabase/migrations/202611160003_catalog_import.sql`](supabase/migrations/202611160003_catalog_import.sql)
+en SQL Editor. Requiere instaladas previamente las migraciones
+`202611160001_labeling_audit.sql` y `202611160002_bulk_batches.sql`.
+Hacer antes una copia de seguridad del inventario. Esta migración agrega los
+campos `extra_photos`, `source_key` y `source_data` al registro de imágenes
+de los lotes, y `catalog_source` a las fichas, sin cambiar los inventarios ni sus
+números existentes. Actualiza las funciones de asociación para preservar los datos.
+
+**No reservar números para una prueba de interfaz.** Se puede seleccionar una
+colección, recorrer las miniaturas, excluir imágenes y revisar metadatos sin
+modificar el inventario. La reserva es definitiva y debe realizarse cuando
+estén disponibles las etiquetas físicas.
+
+La importación captura una *instantánea* del catalogador. Si posteriormente se
+corrige un campo o un vínculo en GitHub, la copia en el inventario no se modifica
+automáticamente. La información original se conserva como referencia y puede
+editarse la descripción propia del inventario sin perder esa instantánea.
+
 ## Carga masiva con correspondencia física manual (segunda etapa)
 
 El botón **Nueva carga masiva** abre un asistente independiente de la carga guiada anterior:
