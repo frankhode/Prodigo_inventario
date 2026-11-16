@@ -286,5 +286,71 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       assert.ok(next.number > done.number);
       assert.equal((await db.query('select * from public.inventory_number_voids where number=$1',[done.number])).rows.length,1);
     });
+
+    await t.test('Reserva un rango único y etiqueta fotografías en cualquier orden físico',async () => {
+      await db.exec('reset role');
+      await db.exec(await readFile(new URL('../supabase/migrations/202611160002_bulk_batches.sql',import.meta.url),'utf8'));
+      const seq=await db.query('select last_value,is_called from public.inventory_items_number_seq');
+      const start=Number(seq.rows[0].last_value)+(seq.rows[0].is_called ? 1 : 0);
+      await as(users[0]);
+      const ids=[randomUUID(),randomUUID(),randomUUID()];
+      const paths=[];
+      for (const id of ids) paths.push(await upload(users[0],id));
+      const pics=ids.map((id,index)=>({
+        id,original_filename:`digital/imagen_${index+1}.jpg`,photo_path:paths[index],
+        image_values:index===1?{manufacture_date:'1906'}:{}
+      }));
+      const common={category:'Fotografía',destination:'museo',brand:'',model:'',
+        manufacture_date:'',type:'Retrato',notes:''};
+      const reserve=(id,expected,files=pics) => db.query(
+        'select * from public.create_inventory_bulk_batch($1,$2,$3::jsonb,$4::jsonb)',
+        [id,expected,JSON.stringify(common),JSON.stringify(files)]
+      );
+      const batchId=randomUUID();
+      await assert.rejects(reserve(batchId,start+1),/próxima etiqueta debe ser/);
+      await db.exec('reset role');
+      const unchanged=await db.query('select last_value,is_called from public.inventory_items_number_seq');
+      assert.deepEqual(unchanged.rows,seq.rows);
+      await as(users[0]);
+      const batch=(await reserve(batchId,start)).rows[0];
+      assert.equal(batch.total,3);
+      assert.equal(Number(batch.start_number),start);
+      assert.equal(Number(batch.end_number),start+2);
+      assert.equal((await reserve(batchId,start)).rows[0].id,batchId);
+      const pending=(await db.query('select * from public.inventory_bulk_slots where batch_id=$1 order by ordinal',[batchId])).rows;
+      assert.deepEqual(pending.map(x=>Number(x.number)),[start,start+1,start+2]);
+      assert.ok(pending.every(x=>!x.image_id));
+      assert.equal((await db.query('select * from public.inventory_items where number between $1 and $2',[start,start+2])).rows.length,0);
+      const assign=(actorIndex,imgIndex,expected,details={})=>db.query(
+        'select * from public.assign_inventory_bulk_image($1,$2,$3,$4::jsonb)',
+        [batchId,ids[imgIndex],expected,JSON.stringify(details)]
+      );
+      await as(users[3]);
+      await assert.rejects(assign(3,1,start),/No tenés acceso/);
+      assert.equal((await db.query('select * from public.inventory_bulk_batches')).rows.length,0);
+      await as(users[1]);
+      const second=(await assign(1,1,start,{original_number:'000127'})).rows[0];
+      assert.equal(second.id,ids[1]);assert.equal(second.code,`P${String(start).padStart(6,'0')}`);
+      assert.equal(second.manufacture_date,'1906');assert.equal(second.original_number,'000127');
+      assert.equal(second.label_confirmed_at,null);assert.equal(second.label_confirmed_by,null);
+      assert.equal((await assign(1,1,start,{original_number:'999'})).rows[0].original_number,'000127');
+      await assert.rejects(assign(1,0,start),/próxima etiqueta física/);
+      const first=(await assign(1,0,start+1)).rows[0];
+      assert.equal(first.id,ids[0]);assert.equal(Number(first.number),start+1);
+      const third=(await assign(1,2,start+2,{notes:'Identificada en la caja física'})).rows[0];
+      assert.equal(third.id,ids[2]);assert.equal(third.notes,'Identificada en la caja física');
+      await assert.rejects(assign(1,0,start+2),/otro número asociado/);
+      assert.equal((await db.query('select * from public.inventory_label_events where item_id = any($1::uuid[])',[ids])).rows.length,0);
+      for(const item of [second,first,third]) {
+        const confirmed=(await db.query('select * from public.set_inventory_label($1,$2,$3)',[item.id,item.revision,true])).rows[0];
+        assert.ok(confirmed.label_confirmed_at);
+        assert.equal(confirmed.label_confirmed_by,users[1]);
+      }
+      assert.equal((await db.query('select * from public.inventory_label_events where item_id = any($1::uuid[])',[ids])).rows.length,3);
+      assert.equal((await db.query('select * from public.inventory_bulk_slots where image_id is not null and batch_id=$1',[batchId])).rows.length,3);
+      await as(users[0]); const id=randomUUID(),path=await upload(users[0],id);
+      const regular=(await save(id,0,values,path)).rows[0];
+      assert.equal(Number(regular.number),start+3);
+    });
   } finally { await db.close(); }
 });

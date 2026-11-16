@@ -100,6 +100,71 @@ export function connect(config) {
       }
       return saved;
     },
+    async listBulkBatches() {
+      return check(await client.from('inventory_bulk_batches').select('*')
+        .order('created_at',{ascending:false}).limit(100));
+    },
+    async bulkBackupSnapshot() {
+      const batches=[];
+      for(let offset=0;;offset+=500) {
+        const rows=check(await client.from('inventory_bulk_batches').select('*')
+          .order('created_at',{ascending:false}).range(offset,offset+499));
+        batches.push(...rows);
+        if(rows.length<500)break;
+      }
+      const images=[],slots=[];
+      for(const batch of batches) {
+        const data=await this.bulkDetails(batch.id);
+        images.push(...data.images);
+        slots.push(...data.slots);
+      }
+      const labelEvents=[];
+      for(let offset=0;;offset+=500) {
+        const rows=check(await client.from('inventory_label_events').select('*')
+          .order('id').range(offset,offset+499));
+        labelEvents.push(...rows);
+        if(rows.length<500)break;
+      }
+      return {batches,images,slots,labelEvents};
+    },
+    async bulkDetails(batchId) {
+      const [images,slots] = await Promise.all([
+        client.from('inventory_bulk_images').select('*').eq('batch_id',batchId).order('ordinal'),
+        client.from('inventory_bulk_slots').select('*').eq('batch_id',batchId).order('ordinal')
+      ]);
+      const imageRows=check(images),slotRows=check(slots);
+      const linkedIds=slotRows.map(slot=>slot.image_id).filter(Boolean);
+      const linkedItems=[];
+      for(let offset=0;offset<linkedIds.length;offset+=100) {
+        const subset=linkedIds.slice(offset,offset+100);
+        linkedItems.push(...check(await client.from('inventory_items')
+          .select('id,number,code,revision,label_confirmed_at')
+          .in('id',subset)));
+      }
+      return {images:imageRows,slots:slotRows,items:linkedItems};
+    },
+    async stageBulkPhoto(id,userId,blob) {
+      return uploadPhoto(id,userId,blob);
+    },
+    async createBulkBatch({id,expectedStart,common,images}) {
+      const result = await client.rpc('create_inventory_bulk_batch',{
+        p_id:id,p_expected_start:expectedStart,p_common:common,p_images:images
+      });
+      if (result.error?.code === 'PGRST202') throw Error('La carga masiva todavía no está habilitada en Supabase. Aplicá la nueva migración.');
+      return check(result);
+    },
+    async assignBulkImage({batchId,imageId,expectedNumber,details}) {
+      const result = await client.rpc('assign_inventory_bulk_image',{
+        p_batch_id:batchId,p_image_id:imageId,p_expected_number:expectedNumber,p_details:details
+      });
+      if (result.error?.code === 'PGRST202') throw Error('La asignación masiva todavía no está habilitada en Supabase.');
+      return check(result);
+    },
+    async discardUnreservedBulkFiles(paths) {
+      if (!paths.length) return;
+      // Solo se puede limpiar material temporal todavía no reservado.
+      check(await client.storage.from('inventory-photos').remove(paths));
+    },
     async setLabel({id,revision,labeled}) {
       const result = await client.rpc('set_inventory_label',{p_id:id,p_revision:revision,p_labeled:labeled});
       if (result.error?.code === 'PGRST202') throw Error('El etiquetado todavía no está habilitado en Supabase. Aplicá la migración de etiquetado.');

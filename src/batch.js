@@ -8,3 +8,9 @@ export function orderedBatchImages(files) {
     (file.type.startsWith('image/') || imageExtension.test(file.name))
   ).sort((a,b) => filenameOrder.compare(a.name,b.name) || (a.name < b.name ? -1 : Number(a.name > b.name)));
 }
+
+ // La carga masiva conserva también las subcarpetas (y sus rutas originales).
+export function orderedBulkFolderImages(files) {
+  return Array.from(files).filter(file=>file.type.startsWith('image/')||imageExtension.test(file.name))
+    .sort((a,b)=>filenameOrder.compare(a.webkitRelativePath||a.name,b.webkitRelativePath||b.name));
+}

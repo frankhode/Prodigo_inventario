@@ -4,6 +4,7 @@ import { compressPhoto, compressFrame } from './photos.js';
 import { Camera, cameraError } from './camera.js';
 import { createCropEditor, cropThumbnail, validCrop } from './photo-crop.js';
 import { orderedBatchImages } from './batch.js';
+import { mountBulkWorkflow } from './bulk-workflow.js';
 import { Zip, ZipPassThrough, strToU8 } from 'fflate';
 
 const $ = selector => document.querySelector(selector);
@@ -614,15 +615,38 @@ function download(blob,name) {
 }
 const stamp = () => new Date().toISOString().slice(0,10);
 $('#export-csv').addEventListener('click',() => download(new Blob([csv(state.items)],{type:'text/csv;charset=utf-8'}),`prodigo-${stamp()}.csv`));
-$('#export-json').addEventListener('click',() => download(new Blob([JSON.stringify({format:'prodigo-inventario-v2',exported_at:new Date().toISOString(),items:state.items.map(exportRecord),terms:state.terms},null,2)],{type:'application/json'}),`prodigo-${stamp()}.json`));
+$('#export-json').addEventListener('click',async () => {
+  if (state.busy) return;
+  state.busy=true;
+  try {
+    const bulk=await db.bulkBackupSnapshot();
+    download(new Blob([JSON.stringify({
+      format:'prodigo-inventario-v3',exported_at:new Date().toISOString(),
+      items:state.items.map(exportRecord),terms:state.terms,voids:state.voids,bulk
+    },null,2)],{type:'application/json'}),`prodigo-${stamp()}.json`);
+  } catch(error){toast(errorText(error));}
+  finally{state.busy=false;}
+});
 $('#export-backup').addEventListener('click',async () => {
   if (state.busy) return;
   state.busy = true; const button = $('#export-backup'), status = $('#export-status'); button.disabled = true; status.hidden = false;
   const streaming = !!window.showSaveFilePicker;
   // En teléfonos, un ZIP de 5.000 fotos podría agotar la memoria. Descargar por partes.
-  const snapshot = state.backup || {items:structuredClone(state.items),terms:structuredClone(state.terms),offset:0};
-  const {items,terms} = snapshot;
-  const photos = items.flatMap(photoFiles);
+  let snapshot;
+  try {
+    snapshot = state.backup || {
+      items:structuredClone(state.items),terms:structuredClone(state.terms),
+      voids:structuredClone(state.voids),bulk:await db.bulkBackupSnapshot(),offset:0
+    };
+  } catch(error) {
+    state.busy=false;button.disabled=false;
+    status.textContent=errorText(error);return;
+  }
+  const {items,terms,voids,bulk} = snapshot;
+  const linkedIds=new Set(bulk.slots.map(slot=>slot.image_id).filter(Boolean));
+  const pendingPhotos=bulk.images.filter(image=>!linkedIds.has(image.id))
+    .map(image=>({path:image.photo_path,name:`lotes/${image.batch_id}/${image.id}.jpg`}));
+  const photos=[...items.flatMap(photoFiles),...pendingPhotos];
   const batch = streaming ? photos : photos.slice(snapshot.offset,snapshot.offset+200);
   const part = Math.floor(snapshot.offset/200)+1, parts = Math.max(1,Math.ceil(photos.length/200));
   let sink, chunks = [], zip, zipError;
@@ -638,7 +662,7 @@ $('#export-backup').addEventListener('click',async () => {
       if (sink) writing = writing.then(() => sink.write(data)); else chunks.push(data);
     });
     function add(name,data) { const entry = new ZipPassThrough(name); zip.add(entry); entry.push(data,true); }
-    add('inventario.json',strToU8(JSON.stringify({format:'prodigo-inventario-v2',exported_at:new Date().toISOString(),items:items.map(exportRecord),terms},null,2)));
+    add('inventario.json',strToU8(JSON.stringify({format:'prodigo-inventario-v3',exported_at:new Date().toISOString(),items:items.map(exportRecord),terms,voids,bulk},null,2)));
     add('inventario.csv',strToU8(csv(items)));
     const failures = [];
     for (let index = 0; index < batch.length; index++) {
@@ -659,7 +683,7 @@ $('#export-backup').addEventListener('click',async () => {
       status.textContent = `Respaldo incompleto: faltan ${failures.length} fotos. Revisá FOTOS_FALTANTES.txt y reintentá esta parte.`;
     } else {
       state.backup = null; button.textContent = 'Respaldo con fotos';
-      status.textContent = `Respaldo completo: ${items.length} fichas y fotos${streaming ? '' : ` en ${parts} archivo(s)`}.`;
+      status.textContent = `Respaldo completo: ${items.length} fichas, ${bulk.batches.length} lotes, números anulados e imágenes pendientes${streaming ? '' : ` en ${parts} archivo(s)`}.`;
     }
   } catch (error) {
     zip?.terminate(); if (sink) await sink.abort().catch(() => {});
@@ -669,6 +693,16 @@ $('#export-backup').addEventListener('click',async () => {
 
 document.addEventListener('visibilitychange',() => { if (!document.hidden && !$('#app').hidden && !$('#editor').open) refresh(); });
 setInterval(() => { if (!document.hidden && !$('#app').hidden && !$('#editor').open) refresh(); },60000);
+mountBulkWorkflow({
+  getDb:()=>db,
+  getUser:()=>state.user,
+  getTerms:()=>state.terms,
+  onInventoryChanged:async saved=>{
+    state.items=[...state.items.filter(item=>item.id!==saved.id),saved];
+    updateCategoryFilter(); render();
+  },
+  notify:toast
+});
 try {
   db = connect(config);
   if (!db) { $('#loading').hidden = true; $('#configuration').hidden = false; }

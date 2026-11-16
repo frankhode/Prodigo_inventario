@@ -24,7 +24,7 @@
 <div id="app" hidden>
 <header class="topbar"><a class="wordmark" href="./"><img src="./icon.svg" alt="" width="34" height="34">pródigo<span>INVENTARIO</span></a><div class="header-right"><span id="member-name" class="live-label"></span><button id="refresh" class="text-button">Actualizar</button><button id="logout" class="icon-button" aria-label="Cerrar sesión"><svg><use href="#i-logout"/></svg></button></div></header>
 <main class="main">
-<div class="page-intro"><div><p class="eyebrow">EL ARCHIVO DE PRÓDIGO</p><h1>Inventario<span>.</span></h1><p class="intro-copy">Una foto. Algunos datos. Una historia que sigue.</p></div><div class="batch-actions"><button class="button primary" id="new-item"><svg><use href="#i-plus"/></svg>Nuevo objeto</button><button class="button secondary" id="batch-start">Cargar carpeta</button><button class="button subtle" id="batch-files-button">Elegir varias fotos</button><button class="button secondary" id="batch-resume" hidden>Continuar lote</button><button class="text-button" id="batch-end" hidden>Cerrar lote</button></div></div>
+<div class="page-intro"><div><p class="eyebrow">EL ARCHIVO DE PRÓDIGO</p><h1>Inventario<span>.</span></h1><p class="intro-copy">Una foto. Algunos datos. Una historia que sigue.</p></div><div class="batch-actions"><button type="button" class="button primary" id="bulk-open">Nueva carga masiva</button><button class="button secondary" id="new-item"><svg><use href="#i-plus"/></svg>Nuevo objeto</button><details class="legacy-batch"><summary>Carga guiada anterior</summary><div class="legacy-batch-buttons"><button class="button secondary" id="batch-start">Cargar carpeta</button><button class="button subtle" id="batch-files-button">Elegir varias fotos</button></div></details><button class="button secondary" id="batch-resume" hidden>Continuar lote</button><button class="text-button" id="batch-end" hidden>Cerrar lote</button></div></div>
 <input id="batch-folder" type="file" webkitdirectory multiple hidden><input id="batch-files" type="file" accept="image/*" multiple hidden>
 <section class="stats" aria-label="Resumen del inventario"><div class="stat total"><span>Total de objetos</span><strong id="count-total">0</strong><svg><use href="#i-box"/></svg></div><div class="stat"><span><i class="dot museum"></i>Museo</span><strong id="count-museo">0</strong></div><div class="stat"><span><i class="dot shop"></i>Tienda</span><strong id="count-tienda">0</strong></div><div class="stat"><span><i class="dot other"></i>Otros</span><strong id="count-otros">0</strong></div></section>
 <div class="label-summary"><button type="button" id="show-unlabeled" class="button subtle">Etiquetas pendientes <strong id="count-unlabeled">0</strong></button><span>Etiquetados: <strong id="count-labeled">0</strong></span><button type="button" id="show-voids" class="text-button">Inventarios anulados: <strong id="count-voids">0</strong></button></div>
@@ -81,6 +81,73 @@
   </div>
 </dialog>
 <dialog id="camera-dialog" aria-labelledby="camera-title"><div class="dialog-header"><h2 id="camera-title">Tomar una foto</h2><button type="button" id="cancel-camera" class="icon-button" aria-label="Cancelar foto"><svg><use href="#i-close"/></svg></button></div><div class="camera-body"><div class="camera-format"><span class="camera-format-label">Formato</span><div class="camera-ratios" role="group" aria-label="Formato de la fotografía"><button type="button" data-camera-ratio="1:1" aria-pressed="true">1:1</button><button type="button" data-camera-ratio="9:16" aria-pressed="false">9:16</button></div></div><div id="camera-frame" class="camera-frame" data-ratio="1:1"><video id="camera-video" autoplay muted playsinline aria-label="Vista de la cámara"></video></div><p id="camera-message" class="hint" role="status">Activando cámara…</p><button type="button" id="take-photo" class="button primary" disabled>Tomar foto</button><div class="camera-alternatives"><button type="button" id="camera-gallery" class="text-button">Elegir de la galería</button><button type="button" id="native-camera" class="text-button">Usar cámara del teléfono</button></div></div></dialog>
+<dialog id="bulk-dialog" class="bulk-dialog" aria-label="Carga masiva y etiquetado físico">
+<header class="bulk-header"><h2>Carga masiva</h2><button type="button" id="bulk-close" class="icon-button" aria-label="Cerrar carga masiva">✕</button></header>
+<p id="bulk-error" class="error" role="alert"></p>
+<section data-bulk-view="home" class="bulk-body">
+  <h3>Incorporar imágenes</h3>
+  <p class="hint">Seleccioná una carpeta o varias fotos. Primero se revisan los archivos; los inventarios se reservan juntos después de validar.</p>
+  <div class="bulk-toolbar"><button type="button" class="button primary" id="bulk-folder-button">Seleccionar carpeta</button><button type="button" class="button secondary" id="bulk-files-button">Seleccionar imágenes</button></div>
+  <input type="file" id="bulk-folder-input" webkitdirectory multiple hidden>
+  <input type="file" id="bulk-files-input" accept="image/*" multiple hidden>
+  <h3>Lotes existentes</h3><div id="bulk-batches" class="bulk-batches"></div>
+</section>
+<section data-bulk-view="validation" class="bulk-body" hidden>
+  <h3>1. Validar imágenes</h3>
+  <p id="bulk-validation-count" class="hint"></p>
+  <p id="bulk-validation-warning" class="hint"></p>
+  <div class="bulk-toolbar"><input id="bulk-validation-search" type="search" placeholder="Buscar por archivo" aria-label="Buscar imágenes"><button type="button" id="bulk-validation-all" class="button subtle">Incluir todas</button><button type="button" id="bulk-validation-none" class="button subtle">Excluir todas</button></div>
+  <div id="bulk-validation-grid" class="bulk-grid"></div>
+  <div class="bulk-footer"><button type="button" class="button subtle" id="bulk-validation-back">Volver</button><button type="button" class="button primary" id="bulk-validation-next">Continuar con datos comunes</button></div>
+</section>
+<section data-bulk-view="metadata" class="bulk-body" hidden>
+  <h3>2. Datos comunes y etiquetas</h3>
+  <p id="bulk-meta-count" class="hint"></p>
+  <p class="hint">Los valores se aplican a todo el lote. Durante el etiquetado podrás agregar datos individuales a cada fotografía.</p>
+  <div class="bulk-fields">
+    <label>Tipo de objeto *<input type="text" id="bulk-category" list="bulk-category-options" maxlength="120" autocomplete="off" required placeholder="Fotografía"><datalist id="bulk-category-options"></datalist></label>
+    <label>Destino *<select id="bulk-destination" required><option value="">Elegir destino</option><option value="museo">Museo</option><option value="tienda">Tienda</option><option value="otros">Otros</option></select></label>
+    <label>Autor / marca<input id="bulk-brand" maxlength="120" placeholder="Opcional"></label>
+    <label>Modelo<input id="bulk-model" maxlength="120" placeholder="Opcional"></label>
+    <label>Fecha<input id="bulk-date" maxlength="80" placeholder="ca. 1900"></label>
+    <label>Número original<input id="bulk-original-number" maxlength="120"></label>
+    <label>Tipo<input id="bulk-type" maxlength="120" placeholder="Retrato, gabinete…"></label>
+    <label class="bulk-wide">Notas generales<textarea id="bulk-notes" rows="2" maxlength="4000"></textarea></label>
+  </div>
+  <div class="bulk-number-check"><label>Primera etiqueta preimpresa sin usar *<input id="bulk-start-number" type="text" inputmode="text" maxlength="7" placeholder="P000401" required></label>
+  <p class="hint">El sistema comprobará que el próximo correlativo de Supabase coincida. Si es distinto, no reservará números.</p></div>
+  <div class="bulk-footer"><button type="button" class="button subtle" id="bulk-meta-back">Volver a imágenes</button><button type="button" class="button primary" id="bulk-create">Subir imágenes y reservar números</button></div>
+</section>
+<section data-bulk-view="uploading" class="bulk-body" hidden><h3>Preparando el lote</h3><div id="bulk-upload-progress" role="status" class="hint">Preparando archivos…</div></section>
+<section data-bulk-view="work" class="bulk-body" hidden>
+  <div class="bulk-work-head"><div><h3 id="bulk-work-title">Lote</h3><p id="bulk-work-progress" class="hint"></p></div><div class="bulk-number"><span>Próxima etiqueta</span><strong id="bulk-next-number"></strong></div></div>
+  <p id="bulk-work-complete" class="hint" hidden>Este lote está completamente etiquetado.</p>
+  <div class="bulk-toolbar">
+    <input id="bulk-work-search" type="search" placeholder="Buscar archivo" aria-label="Buscar imagen en el lote">
+    <select id="bulk-work-filter" aria-label="Filtrar imágenes"><option value="pending">Sin etiquetar</option><option value="all">Todas</option></select>
+    <button type="button" class="button subtle" id="bulk-work-refresh">Actualizar</button>
+  </div>
+  <p class="hint">Buscá la fotografía física y abrila. Primero vinculá el próximo número; cuando el sistema lo confirme, pegá la etiqueta en el sobre y registrá su colocación.</p>
+  <div id="bulk-work-grid" class="bulk-grid"></div>
+  <div class="bulk-footer"><button type="button" class="button secondary" id="bulk-work-back">Volver a los lotes</button></div>
+</section>
+<section data-bulk-view="detail" class="bulk-body" hidden>
+  <div class="bulk-detail-layout">
+    <div><img id="bulk-detail-image" alt="Fotografía a etiquetar"><p id="bulk-detail-filename" class="hint"></p></div>
+    <div class="bulk-detail-info"><span>Etiqueta física a colocar</span><strong id="bulk-detail-number"></strong><p id="bulk-detail-message" class="hint"></p>
+      <h3>Datos individuales · opcionales</h3>
+      <div class="bulk-fields">
+        <label>Autor / marca<input id="bulk-detail-brand" maxlength="120"></label>
+        <label>Fecha<input id="bulk-detail-date" maxlength="80"></label>
+        <label>Número original<input id="bulk-detail-original-number" maxlength="120"></label>
+        <label>Tipo<input id="bulk-detail-type" maxlength="120"></label>
+        <label class="bulk-wide">Notas<textarea id="bulk-detail-notes" rows="3" maxlength="4000"></textarea></label>
+      </div>
+    </div>
+  </div>
+  <div class="bulk-footer"><button type="button" class="button subtle" id="bulk-detail-back">Volver a grilla</button><button type="button" class="button primary" id="bulk-detail-save">Ya coloqué la etiqueta · Confirmar</button></div>
+</section>
+</dialog>
 <dialog id="void-history" class="confirm-dialog void-history" aria-labelledby="void-history-title"><div class="void-history-content"><h2 id="void-history-title">Inventarios anulados</h2><p class="hint">Los números conservan su historia y no vuelven a asignarse.</p><div id="void-history-list" class="void-history-list"></div><div class="dialog-actions"><button type="button" class="button secondary" id="close-void-history">Cerrar</button></div></div></dialog>
 <dialog id="delete-confirm" class="confirm-dialog" aria-labelledby="delete-title"><form method="dialog"><h2 id="delete-title">¿Anular este inventario?</h2><p id="delete-description"></p><label class="void-reason-label">Motivo de anulación <textarea id="void-reason" required minlength="3" maxlength="300" rows="3" placeholder="Ej. Registro duplicado o carga equivocada"></textarea></label><div class="dialog-actions"><button value="cancel" class="button subtle" formnovalidate autofocus>Cancelar</button><button value="delete" class="button destructive">Anular inventario</button></div></form></dialog>
 <dialog id="confirm" class="confirm-dialog" aria-labelledby="confirm-title"><form method="dialog"><h2 id="confirm-title">¿Cerrar sin guardar?</h2><p>Los cambios de esta ficha todavía no se guardaron.</p><div class="dialog-actions"><button value="cancel" class="button subtle">Seguir cargando</button><button value="discard" class="button destructive">Descartar cambios</button></div></form></dialog>
