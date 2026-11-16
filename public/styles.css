@@ -181,3 +181,23 @@
 .legacy-batch-buttons{position:absolute;z-index:6;top:100%;right:0;width:max-content;max-width:calc(100vw - 40px);display:flex;flex-direction:column;gap:5px;padding:12px;border:1px solid var(--line);background:white;box-shadow:0 8px 20px #0002;border-radius:7px}
 .legacy-batch-buttons .button{justify-content:start}
 @media(max-width:600px){.legacy-batch-buttons{left:0;right:auto}}
+
+/* Incorporación directa de colecciones fotográficas previamente catalogadas. */
+.bulk-catalog-import{border-top:1px solid var(--line);padding:22px 0;margin-top:22px}
+.bulk-catalog-import h3{margin-bottom:6px;font-size:21px}
+.bulk-catalog-import .hint{max-width:750px}
+#bulk-catalog-picker[hidden]{display:none}
+#bulk-catalog-select{min-height:44px;max-width:min(100%,410px);min-width:210px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:white}
+.catalog-source-panel{margin:0;border-bottom:1px solid var(--line);background:#f9f8f4;padding:9px 30px}
+.catalog-source-panel[hidden]{display:none}
+.catalog-source-panel summary{cursor:pointer;font-size:12px;font-weight:650;color:var(--green);list-style:revert}
+.catalog-source-panel summary span{font-size:11px;font-weight:400;color:var(--muted);margin-left:8px}
+.catalog-source-details{max-height:320px;overflow:auto;padding:12px 0 6px}
+.catalog-source-list{display:grid;grid-template-columns:140px minmax(0,1fr);gap:7px 14px;margin:0 0 15px}
+.catalog-source-list dt{color:var(--muted);font-size:11px}
+.catalog-source-list dd{margin:0;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.catalog-source-details h4{font-size:12px;margin:12px 0}
+.catalog-source-part{padding:9px 0;border-top:1px solid var(--line);font-size:12px}
+.catalog-source-part p{white-space:pre-wrap;margin:5px 0;color:var(--muted)}
+.catalog-source-chip{display:block;margin:5px 0 0;font-size:10px;color:var(--muted)}
+@media(max-width:600px){.catalog-source-panel{padding:8px 21px}.catalog-source-list{grid-template-columns:105px minmax(0,1fr);gap:6px 10px}}

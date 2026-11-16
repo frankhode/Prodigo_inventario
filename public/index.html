@@ -39,6 +39,10 @@
 </main></div>
 <dialog id="editor" aria-label="Ficha de inventario"><form id="item-form" novalidate>
 <nav class="wizard-progress" aria-label="Pasos de carga"><div class="wizard-topline"><span id="step-caption" aria-live="polite">1 de 6 · Foto y objeto</span><div class="wizard-tools"><span id="editor-code" hidden></span><button type="button" class="icon-button close-editor" aria-label="Cerrar ficha"><svg><use href="#i-close"/></svg></button></div></div><progress id="step-progress" max="6" value="1"></progress></nav>
+<details id="catalog-source-section" class="catalog-source-panel" hidden>
+<summary>Ver metadatos del catalogador fotográfico <span id="catalog-source-collection"></span></summary>
+<div id="catalog-source-details" class="catalog-source-details"></div>
+</details>
 <div id="label-panel" class="label-panel" hidden><span id="label-status" class="label-status">Pendiente de etiqueta</span><button type="button" class="button secondary" id="label-toggle">Confirmar etiqueta colocada</button></div>
 <div class="wizard-body">
 <aside id="batch-reference" class="batch-reference" aria-label="Foto de la ficha" hidden>
@@ -88,6 +92,16 @@
   <h3>Incorporar imágenes</h3>
   <p class="hint">Seleccioná una carpeta o varias fotos. Primero se revisan los archivos; los inventarios se reservan juntos después de validar.</p>
   <div class="bulk-toolbar"><button type="button" class="button primary" id="bulk-folder-button">Seleccionar carpeta</button><button type="button" class="button secondary" id="bulk-files-button">Seleccionar imágenes</button></div>
+<div class="bulk-catalog-import">
+  <h3>Importar datos del catalogador</h3>
+  <p class="hint">Recupera frentes catalogados, reversos y partes vinculadas, autores, fechas, números originales y el resto de los metadatos. No modifica las colecciones originales ni asigna inventarios durante la revisión.</p>
+  <button type="button" class="button secondary" id="bulk-catalog-open">Consultar colecciones fotográficas</button>
+  <div id="bulk-catalog-picker" class="bulk-toolbar" hidden>
+    <label class="sr-only" for="bulk-catalog-select">Colección fotográfica</label>
+    <select id="bulk-catalog-select"></select>
+    <button type="button" class="button primary" id="bulk-catalog-load">Revisar colección</button>
+  </div>
+</div>
   <input type="file" id="bulk-folder-input" webkitdirectory multiple hidden>
   <input type="file" id="bulk-files-input" accept="image/*" multiple hidden>
   <h3>Lotes existentes</h3><div id="bulk-batches" class="bulk-batches"></div>

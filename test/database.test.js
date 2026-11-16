@@ -352,5 +352,72 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       const regular=(await save(id,0,values,path)).rows[0];
       assert.equal(Number(regular.number),start+3);
     });
+
+    await t.test('Importación del catalogador conserva procedencia, reversos y evita duplicaciones',async () => {
+      await db.exec('reset role');
+      await db.exec(await readFile(new URL('../supabase/migrations/202611160003_catalog_import.sql',import.meta.url),'utf8'));
+      const seq=await db.query('select last_value,is_called from public.inventory_items_number_seq');
+      const start=Number(seq.rows[0].last_value)+(seq.rows[0].is_called?1:0);
+      await as(users[0]);
+      const id=randomUUID(),cover=await upload(users[0],id);
+      const extraPath=`${users[0]}/${id}/${'b'.repeat(64)}.jpg`;
+      await db.query("insert into storage.objects values ('inventory-photos',$1)",[extraPath]);
+      const sourceKey=`prodigo-catalogador:bixio:${'a'.repeat(64)}`;
+      const source={system:'prodigo-catalogador',collection_id:'bixio',collection_name:'F. Bixio y Cia.',
+        source_id:'a'.repeat(64),original_filename:'img024.tif',
+        record:{number:'000127',date:'ca. 1900',signature:'BIX-01',people:['Niñas'],color:'byn'},
+        parts:[{id:'b'.repeat(64),original_filename:'img024b.tif',record:{side:'Reverso',notes:'Nota al dorso'}}]};
+      const input={
+        id,original_filename:'img024.tif',photo_path:cover,extra_photos:[extraPath],
+        source_key:sourceKey,source_data:source,
+        image_values:{original_number:'000127',manufacture_date:'ca. 1900',
+          brand:'Florencio Bixio',type:'Retrato'}
+      };
+      const reserve=(batchId,expected,items)=>db.query(
+        'select * from public.create_inventory_bulk_batch($1,$2,$3::jsonb,$4::jsonb)',
+        [batchId,expected,JSON.stringify({category:'Fotografía',destination:'museo'}),JSON.stringify(items)]
+      );
+      const batchId=randomUUID();
+      await as(users[3]);
+      await assert.rejects(reserve(batchId,start,[input]),/No tenés acceso/);
+      assert.equal((await db.query('select * from public.inventory_bulk_images')).rows.length,0);
+      await as(users[0]);
+      await assert.rejects(reserve(randomUUID(),start,[{...input,extra_photos:[cover]}]),/complementaria inválida/);
+      await reserve(batchId,start,[input]);
+      const pending=(await db.query('select * from public.inventory_bulk_images where id=$1',[id])).rows[0];
+      assert.deepEqual(pending.extra_photos,[extraPath]);
+      assert.equal(pending.source_key,sourceKey);
+      assert.equal(pending.source_data.record.number,'000127');
+      assert.equal((await db.query('delete from storage.objects where name=$1 returning *',[extraPath])).rows.length,0);
+      await assert.rejects(reserve(randomUUID(),start+1,[{...input,id:randomUUID()}]),/fotografía ya está incorporada|Imagen 1 sin archivo/);
+      const item=(await db.query(
+        'select * from public.assign_inventory_bulk_image($1,$2,$3,$4::jsonb)',
+        [batchId,id,start,JSON.stringify({notes:'Inventario físico'})])).rows[0];
+      assert.equal(item.original_number,'000127');
+      assert.equal(item.brand,'Florencio Bixio');
+      assert.equal(item.manufacture_date,'ca. 1900');
+      assert.equal(item.notes,'Inventario físico');
+      assert.deepEqual(item.extra_photos,[extraPath]);
+      assert.equal(item.catalog_source.record.signature,'BIX-01');
+      assert.equal(item.catalog_source.parts[0].record.notes,'Nota al dorso');
+      assert.equal(item.label_confirmed_at,null);
+      assert.equal((await db.query('delete from storage.objects where name=$1 returning *',[extraPath])).rows.length,0);
+      const updated=(await save(id,item.revision,{...values,category:'Fotografía',brand:'Florencio Bixio',model:'',
+        original_number:'000127',type:'Retrato'},cover)).rows[0];
+      assert.deepEqual(updated.extra_photos,[extraPath]);
+      assert.equal(updated.catalog_source.source_id,'a'.repeat(64));
+      assert.equal(updated.catalog_source.record.number,'000127');
+      const label=(await db.query('select * from public.set_inventory_label($1,$2,$3)',
+        [id,updated.revision,true])).rows[0];
+      assert.ok(label.label_confirmed_at);
+      await assert.rejects(reserve(randomUUID(),start+1,[input]),/fotografía ya está incorporada/);
+      await as(users[1]);
+      const deleted=(await db.query('select public.void_inventory_item($1,$2,$3)',
+        [id,label.revision,'Retirado de la colección de prueba'])).rows[0];
+      assert.equal(deleted.void_inventory_item,cover);
+      const voided=(await db.query('select snapshot from public.inventory_number_voids where number=$1',[start])).rows[0];
+      assert.equal(voided.snapshot.catalog_source.collection_id,'bixio');
+      assert.deepEqual(voided.snapshot.extra_photos,[extraPath]);
+    });
   } finally { await db.close(); }
 });
