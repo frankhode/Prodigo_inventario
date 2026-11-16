@@ -180,7 +180,29 @@ Confirmar la etiqueta registra fecha, usuario y evento en `inventory_label_event
 
 **Compatibilidad:** la función `delete_inventory_item` anterior pasa a registrar una anulación con motivo genérico, para que clientes antiguos no eliminen números sin historial. La migración no reconstruye eventos anteriores.
 
-### Próximas etapas
+## Carga masiva con correspondencia física manual (segunda etapa)
 
-La reserva de rangos para **carga masiva** y la asociación manual de fotografías físicas con etiquetas preimpresas se implementan separadamente. No asociar por orden de nombre de archivo ni asumir que la posición física coincide con el orden digital. La importación desde el catalogador fotográfico deberá conservar frente/reverso y sus metadatos; su repositorio original no se modificará.
+El botón **Nueva carga masiva** abre un asistente independiente de la carga guiada anterior:
+
+1. Seleccionar una carpeta completa, incluidas las subcarpetas, o varios archivos. El navegador conserva sus nombres y rutas; no altera los originales. Se admiten imágenes JPG, PNG y WebP. TIFF/HEIC se excluyen e informan en esta etapa; conservar siempre las fuentes fuera de Supabase.
+2. Validar la grilla visual, retirando los archivos que no corresponden al inventario. Ninguna imagen recibe número mientras se valida.
+3. Asignar datos comunes (tipo de objeto, destino, autor/marca, fecha, etc.) e indicar la **primera etiqueta física preimpresa sin usar**, como P000401.
+4. La app sube versiones reducidas JPEG al almacenamiento privado. Después la función `create_inventory_bulk_batch` comprueba todas las imágenes, verifica el correlativo y reserva **todo el rango** de forma transaccional. Si el rango no coincide, no consume ningún número.
+5. En la vista de lote, buscar la imagen de cada fotografía física sin suponer que el orden de archivos coincide con el de la caja. **Vincular primero** la fotografía con el siguiente número disponible; esto crea la ficha pendiente de etiqueta y evita que otro operador se adjudique ese mismo número. **Pegar después** la etiqueta en el sobre y confirmar su colocación. El sistema registra la fecha, el usuario y el evento.
+6. Se puede cerrar y reabrir un lote reservado. Los números sin asociar no se liberan ni reutilizan; las imágenes ya vinculadas pero aún no etiquetadas permanecen visibles como pendientes. No hace falta completar metadatos individuales para colocar una etiqueta.
+
+Los lotes admiten entre 1 y 500 fotografías en esta versión. La opción **Carga guiada anterior** sigue disponible, plegada en el encabezado.
+
+### Activación en una instalación existente
+
+- Realizar un **respaldo con fotos** antes de modificar Supabase.
+- Aplicar primero [202611160001_labeling_audit.sql](supabase/migrations/202611160001_labeling_audit.sql) (si todavía no está aplicado).
+- Aplicar después [202611160002_bulk_batches.sql](supabase/migrations/202611160002_bulk_batches.sql).
+- Publicar el código de esta rama **solo después** de que ambas migraciones se completen. Primero se integra PR #5 en `main`; después PR #6.
+- Comprobar con 2 o 3 fotografías de prueba que la primera etiqueta coincide con el siguiente código disponible, que las imágenes pueden vincularse en orden arbitrario y que quedan pendientes hasta confirmar su etiqueta física. Los números de esa prueba serán definitivos; no se reusan ni siquiera después de anularla.
+
+Los respaldos nuevos incluyen los códigos anulados, la historia de etiquetado, las reservas de lotes y las fotografías todavía sin asociar, además de las fichas activas. Los datos originales de las colecciones fotográficas alojadas en GitHub no se tocan.
+
+**Pendiente para la tercera etapa:** importación directa de las colecciones del catalogador fotográfico, con frentes/reversos y sus metadatos normalizados, sin cargar de nuevo los archivos de origen.
+
 
