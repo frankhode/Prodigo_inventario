@@ -466,11 +466,11 @@ $('#delete-item').addEventListener('click',async () => {
 window.addEventListener('beforeunload',event => { if (batch || state.dirty || state.busy) { event.preventDefault(); event.returnValue = ''; } });
 const camera = new Camera($('#camera-video'));
 let cameraRatio = '1:1';
-$('[data-camera-ratio]').forEach(button => button.addEventListener('click',() => {
+document.querySelectorAll('[data-camera-ratio]').forEach(button => button.addEventListener('click',() => {
   if (state.busy) return;
   cameraRatio = button.dataset.cameraRatio;
   $('#camera-frame').dataset.ratio = cameraRatio;
-  $('[data-camera-ratio]').forEach(option => option.setAttribute('aria-pressed',String(option === button)));
+  document.querySelectorAll('[data-camera-ratio]').forEach(option => option.setAttribute('aria-pressed',String(option === button)));
 }));
 function closeCamera() { camera.stop(); if ($('#camera-dialog').open) $('#camera-dialog').close(); }
 $('#camera-dialog').addEventListener('close',() => camera.stop());
