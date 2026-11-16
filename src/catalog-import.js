@@ -1,6 +1,6 @@
 // Lectura de las colecciones fotográficas publicadas de Pródigo.
 // Los TIF originales permanecen intactos en su origen; se copian vistas WEBP.
-export const CATALOG_BASE = 'https://frankhode.github.io/prodigo-catalogador/';
+export const CATALOG_BASE = 'https://raw.githubusercontent.com/frankhode/prodigo-catalogador/main/';
 const HEX64 = /^[a-f0-9]{64}$/;
 const RELATIVE_MEDIA = /^media\/[a-z0-9-]+\/[a-f0-9]{64}-[a-f0-9]+(?:-thumb)?\.webp$/;
 const COLL = new Intl.Collator('es',{numeric:true,sensitivity:'base'});
