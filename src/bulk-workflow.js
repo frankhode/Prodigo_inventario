@@ -204,8 +204,29 @@ export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,onB
     $('#bulk-destination').value='';
     for (const id of ['brand','model','date','original-number','type','notes']) $('#bulk-'+id).value='';
     $('#bulk-start-number').value='';
+    $('#bulk-number-range-hint').textContent='';
+    refreshNextNumber();
     $('#bulk-meta-count').textContent=`${chosen().length} fotografías elegidas${catalogSummary ? ` · ${chosen().reduce((n,item)=>n+(item.files.length-1),0)} imágenes vinculadas · metadatos conservados` : ''}`;
     view('metadata');
+  }
+  let nextNumberRequest=0;
+  async function refreshNextNumber() {
+    const category=safeText($('#bulk-category').value);
+    const request=++nextNumberRequest;
+    if(!category)return;
+    $('#bulk-number-range-hint').textContent='Consultando correlativo de '+category+'…';
+    try {
+      const next=await getDb().nextInventoryNumber(category);
+      if(request!==nextNumberRequest)return;
+      $('#bulk-start-number').value=fmt(next);
+      $('#bulk-number-range-hint').textContent=category.toLocaleLowerCase('es')==='máquina de escribir'
+        ? 'Máquinas de escribir: P000001–P000999. La numeración restante seguirá disponible para máquinas.'
+        : 'Fotografías y otros materiales: desde P001000. La secuencia de máquinas no se modifica.';
+    } catch(error) {
+      if(request!==nextNumberRequest)return;
+      $('#bulk-start-number').value='';
+      $('#bulk-number-range-hint').textContent='No se pudo consultar la numeración: '+String(error?.message||error);
+    }
   }
   function commonValues() {
     const values = {
@@ -458,6 +479,7 @@ export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,onB
   $('#bulk-validation-next').addEventListener('click',openMetadata);
   $('#bulk-validation-back').addEventListener('click',()=>view('home'));
   $('#bulk-meta-back').addEventListener('click',()=>view('validation'));
+  $('#bulk-category').addEventListener('change',refreshNextNumber);
   $('#bulk-create').addEventListener('click',commit);
   $('#bulk-work-search').addEventListener('input',renderWork);
   $('#bulk-work-filter').addEventListener('change',event=>{filter=event.target.value;renderWork();});

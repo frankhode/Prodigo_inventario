@@ -419,5 +419,49 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       assert.equal(voided.snapshot.catalog_source.collection_id,'bixio');
       assert.deepEqual(voided.snapshot.extra_photos,[extraPath]);
     });
+
+    await t.test('Rangos independientes: máquinas continúan, fotografías desde P001000',async()=>{
+      await db.exec('reset role');
+      await db.exec(await readFile(new URL('../supabase/migrations/202611160004_number_pools.sql',import.meta.url),'utf8'));
+      await as(users[0]);
+      const next=category=>db.query('select public.next_inventory_number($1) as next',[category]);
+      const machineBefore=Number((await next('Máquina de escribir')).rows[0].next);
+      assert.ok(machineBefore>=1&&machineBefore<1000);
+      assert.equal(Number((await next('Fotografía')).rows[0].next),1000);
+      const photoId=randomUUID(),photoPath=await upload(users[0],photoId);
+      const photoValues={...values,category:'Fotografía',brand:'F. Bixio',model:'',type:'Retrato',original_number:'000127'};
+      const photoSaved=(await save(photoId,0,photoValues,photoPath)).rows[0];
+      assert.equal(photoSaved.code,'P001000');
+      assert.equal(Number((await next('Máquina de escribir')).rows[0].next),machineBefore);
+      assert.equal(Number((await next('Fotografía')).rows[0].next),1001);
+      const ids=[randomUUID(),randomUUID()];
+      const images=[];
+      for(const id of ids)images.push({id,original_filename:id+'.jpg',photo_path:await upload(users[0],id)});
+      const batchId=randomUUID();
+      const common=JSON.stringify({category:'Fotografía',destination:'museo'});
+      const reserve=(expected)=>db.query(
+        'select * from public.create_inventory_bulk_batch($1,$2,$3::jsonb,$4::jsonb)',
+        [batchId,expected,common,JSON.stringify(images)]
+      );
+      await assert.rejects(reserve(machineBefore),/La próxima etiqueta para fotografías/);
+      assert.equal(Number((await next('Fotografía')).rows[0].next),1001);
+      const batch=(await reserve(1001)).rows[0];
+      assert.equal(Number(batch.start_number),1001);
+      assert.equal(Number(batch.end_number),1002);
+      const slots=(await db.query('select number from public.inventory_bulk_slots where batch_id=$1 order by ordinal',[batchId])).rows;
+      assert.deepEqual(slots.map(x=>Number(x.number)),[1001,1002]);
+      await as(users[1]);
+      const machineId=randomUUID(),machinePath=await upload(users[1],machineId);
+      const machine=(await save(machineId,0,values,machinePath)).rows[0];
+      assert.equal(Number(machine.number),machineBefore);
+      assert.equal(Number((await next('Fotografía')).rows[0].next),1003);
+      await as(users[0]);
+      const afterId=randomUUID(),afterPath=await upload(users[0],afterId);
+      const more=(await save(afterId,0,photoValues,afterPath)).rows[0];
+      assert.equal(more.code,'P001003');
+      assert.equal(Number((await next('Máquina de escribir')).rows[0].next),machineBefore+1);
+      await as(users[3]);
+      await assert.rejects(next('Fotografía'),/No tenés acceso/);
+    });
   } finally { await db.close(); }
 });
