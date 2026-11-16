@@ -117,7 +117,7 @@ export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,not
       releaseStage();
       catalogSummary={
         collection:parsed.collection,unlinked:parsed.unlinkedParts,
-        skipped:already.size,linked:available.reduce((n,item)=>n+item.files.length-1,0),
+        skipped:parsed.records.length-available.length,linked:available.reduce((n,item)=>n+item.files.length-1,0),
         total:parsed.records.length
       };
       folderLabel=parsed.collection;
@@ -153,7 +153,7 @@ export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,not
     $('#bulk-validation-count').textContent = `${kept} seleccionadas de ${stage.length} · ${folderLabel}`;
     const unsupported = stage.filter(item=>!item.supported).length;
     $('#bulk-validation-warning').textContent = catalogSummary
-      ? `${catalogSummary.linked} imágenes complementarias vinculadas a estos frentes. ${catalogSummary.unlinked.length} partes sin frente verificable quedan fuera de la importación. ${catalogSummary.skipped} fotografías ya ingresadas se omitieron. Revisá los archivos y excluí los que no quieras incorporar.`
+      ? `${chosen().reduce((n,item)=>n+(item.files.length-1),0)} imágenes complementarias de los frentes seleccionados. ${catalogSummary.unlinked.length} partes sin frente verificable quedan fuera de la importación. ${catalogSummary.skipped} frentes ya ingresados se omitieron. Los originales no se modifican.`
       : unsupported
         ? `${unsupported} archivos TIFF, HEIC u otros formatos no compatibles se excluyeron automáticamente. Para esta versión usá JPG, PNG o WebP derivados de los originales.`
         : 'Tocá una miniatura para excluirla o incorporarla nuevamente; los originales no se borran.';
