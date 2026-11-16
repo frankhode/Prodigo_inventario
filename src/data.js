@@ -181,6 +181,12 @@ export function connect(config) {
     async stageBulkPhoto(id,userId,blob) {
       return uploadPhoto(id,userId,blob);
     },
+    async nextInventoryNumber(category) {
+      const result=await client.rpc('next_inventory_number',{p_category:category});
+      if(result.error?.code==='PGRST202')
+        throw Error('Falta activar la migración 202611160004_number_pools.sql en Supabase.');
+      return check(result);
+    },
     async getBulkBatch(id) {
       return check(await client.from('inventory_bulk_batches')
         .select('*').eq('id',id).maybeSingle());
