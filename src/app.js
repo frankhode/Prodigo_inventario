@@ -8,7 +8,7 @@ import { Zip, ZipPassThrough, strToU8 } from 'fflate';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const state = {items:[],terms:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoPath:null,photoUrl:null,crop:null,gallery:[],dirty:false,busy:false,loading:false,user:null};
+const state = {items:[],terms:[],voids:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoPath:null,photoUrl:null,crop:null,gallery:[],dirty:false,busy:false,loading:false,user:null};
 const stepTitles = ['Foto y objeto','Marca','Modelo','Fecha y numeración','Tipo','Destino y revisión'];
 const config = globalThis.PRODIGO_CONFIG;
 let db;
@@ -95,7 +95,7 @@ $('#login-form').addEventListener('submit',async event => {
   finally { $('#login-submit').disabled = false; }
 });
 $('#logout').addEventListener('click',async () => {
-  try { await db.logout(); batch = null; renderBatchControls(); state.items = []; state.terms = []; state.user = null; $('#items').replaceChildren(); showAuth(); }
+  try { await db.logout(); batch = null; renderBatchControls(); state.items = []; state.terms = []; state.voids = []; state.user = null; $('#items').replaceChildren(); showAuth(); }
   catch (error) { toast(errorText(error)); }
 });
 $('#refresh').addEventListener('click',refresh);
@@ -106,14 +106,18 @@ function updateCategoryFilter() {
   if (values.includes(selected)) $('#category-filter').value = selected;
 }
 function visibleItems() {
-  const query = normalize($('#search').value.trim()), category = $('#category-filter').value;
+  const query = normalize($('#search').value.trim()), category = $('#category-filter').value, label = $('#label-filter').value;
   const visible = state.items.filter(i => (!state.destination || i.destination === state.destination) && (!category || i.category === category)
+    && (label === 'all' || Boolean(i.label_confirmed_at) === (label === 'done'))
     && (!query || normalize([i.code,i.category,i.brand,i.model,i.manufacture_date,i.original_number,i.type,i.notes,destinations[i.destination]].join(' ')).includes(query)));
   if ($('#sort').value === 'brand') return visible.sort((a,b) => a.brand.localeCompare(b.brand,'es') || a.model.localeCompare(b.model,'es') || a.number-b.number);
   return visible.sort((a,b) => $('#sort').value === 'old' ? a.number-b.number : b.number-a.number);
 }
 function render() {
   $('#count-total').textContent = state.items.length;
+  $('#count-unlabeled').textContent = state.items.filter(i => !i.label_confirmed_at).length;
+  $('#count-labeled').textContent = state.items.filter(i => Boolean(i.label_confirmed_at)).length;
+  $('#count-voids').textContent = state.voids.length;
   for (const key of Object.keys(destinations)) $(`#count-${key}`).textContent = state.items.filter(i => i.destination === key).length;
   const visible = visibleItems(); $('#result-count').textContent = visible.length;
   $('#items').replaceChildren(...visible.slice(0,state.limit).map(card));
@@ -126,6 +130,7 @@ function card(item) {
   button.setAttribute('aria-label',`Editar ${item.code}, ${title(item)}`);
   const picture = element('div','card-image'), img = element('img');
   img.alt = title(item); img.loading = 'lazy'; picture.append(cropThumbnail(img,item.photo_crop));
+  picture.append(element('span',`label-chip ${item.label_confirmed_at ? 'labeled' : 'pending'}`,item.label_confirmed_at ? 'Etiquetado' : 'Sin etiquetar'));
   // Solo solicitar fotos de las tarjetas mostradas, nunca de las 5.000 fichas a la vez.
   db.photoUrl(item.photo_path).then(url => { if (button.isConnected) img.src = url; }).catch(() => { img.alt = 'Foto no disponible. Probá Actualizar.'; });
   const body = element('div','card-body');
@@ -133,13 +138,32 @@ function card(item) {
   const bottom = element('div','card-bottom'); bottom.append(element('span',`badge ${item.destination}`,destinations[item.destination]),element('span','card-edit','Editar ficha ↗'));
   body.append(bottom); button.append(picture,body); button.addEventListener('click',() => openEditor(item)); return button;
 }
-for (const id of ['search','sort','category-filter']) $(`#${id}`).addEventListener(id === 'search' ? 'input' : 'change',() => { state.limit = 24; render(); });
+for (const id of ['search','sort','category-filter','label-filter']) $(`#${id}`).addEventListener(id === 'search' ? 'input' : 'change',() => { state.limit = 24; render(); });
 $$('.filter').forEach(button => button.addEventListener('click',() => {
   state.destination = button.dataset.destination; state.limit = 24;
   $$('.filter').forEach(b => { b.classList.toggle('active',b === button); b.setAttribute('aria-pressed',b === button); }); render();
 }));
-$('#reset-filters').addEventListener('click',() => { $('#search').value = ''; $('#category-filter').value = ''; $('.filter[data-destination=""]').click(); });
+$('#reset-filters').addEventListener('click',() => { $('#search').value = ''; $('#category-filter').value = ''; $('#label-filter').value = 'all'; $('.filter[data-destination=""]').click(); });
+$('#show-unlabeled').addEventListener('click',() => { $('#label-filter').value = 'pending'; state.limit = 24; render(); document.querySelector('.collection').scrollIntoView({behavior:'smooth',block:'start'}); });
 $('#more-items').addEventListener('click',() => { state.limit += 24; render(); });
+$('#show-voids').addEventListener('click',() => {
+  const list = $('#void-history-list');
+  list.replaceChildren();
+  const records = [...state.voids].sort((a,b) => b.number - a.number);
+  if (!records.length) list.append(element('p','hint','Todavía no hay números anulados desde que se activó el historial.'));
+  for (const record of records) {
+    const row = element('article','void-history-row');
+    row.append(element('strong','',record.code));
+    const old = record.snapshot || {};
+    row.append(element('span','',title(old)));
+    row.append(element('p','',record.reason));
+    row.append(element('small','',new Date(record.voided_at).toLocaleString('es-AR')));
+    list.append(row);
+  }
+  $('#void-history').showModal();
+});
+$('#close-void-history').addEventListener('click',() => $('#void-history').close());
+
 const thumbnailSizes = ['tiny','small','medium','large'];
 function setThumbnailSize(value) {
   const size = thumbnailSizes.includes(value) ? value : 'small';
@@ -284,6 +308,30 @@ $('#extra-photos-input').addEventListener('change',async event => {
 });
 
 function saveLabel() { return state.current ? 'Guardar cambios' : 'Guardar objeto'; }
+function renderLabelControls() {
+  const item = state.current;
+  $('#label-panel').hidden = !item;
+  if (!item) return;
+  $('#label-status').textContent = item.label_confirmed_at
+    ? `Etiqueta confirmada · ${new Date(item.label_confirmed_at).toLocaleDateString('es-AR')}`
+    : 'Pendiente de etiqueta física';
+  $('#label-status').classList.toggle('confirmed',Boolean(item.label_confirmed_at));
+  $('#label-toggle').textContent = item.label_confirmed_at ? 'Revertir confirmación' : 'Confirmar etiqueta colocada';
+}
+$('#label-toggle').addEventListener('click',async () => {
+  if (!state.current || state.busy) return;
+  if (state.dirty) { toast('Guardá los cambios de la ficha antes de confirmar la etiqueta.'); return; }
+  const previous = state.current;
+  busy(true);
+  try {
+    const saved = await db.setLabel({id:previous.id,revision:previous.revision,labeled:!previous.label_confirmed_at});
+    state.current = saved;
+    state.items = state.items.map(item => item.id === saved.id ? saved : item);
+    renderLabelControls(); render();
+    toast(saved.label_confirmed_at ? `${saved.code}: etiqueta confirmada.` : `${saved.code}: vuelve a pendiente de etiquetado.`);
+  } catch (error) { toast(errorText(error)); }
+  finally { busy(false); }
+});
 function showStep(step) {
   state.step = step; $('#form-error').textContent = '';
   $$('.wizard-step').forEach((section,index) => section.hidden = index !== step);
@@ -300,6 +348,7 @@ async function openEditor(item = null) {
   state.crop = validCrop(item?.photo_crop) ? item.photo_crop : null;
   $('#crop-button').hidden = true;
   $('#delete-item').hidden = !item;
+  renderLabelControls();
   if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
   state.dirty = false; $('#item-form').reset();
   for (const field of combos) fillCombo(field,item?.[field] || '');
@@ -445,20 +494,22 @@ $('#editor').addEventListener('cancel',event => { event.preventDefault(); closeE
 $('#delete-item').addEventListener('click',async () => {
   if (state.busy || !state.current) return;
   const item = state.current;
-  $('#delete-description').textContent = `Se borrará ${item.code} · ${title(item)}, con sus datos y sus fotos. Esta acción no se puede deshacer. El identificador no se volverá a usar.`;
+  $('#delete-description').textContent = `Se anulará ${item.code} · ${title(item)}. Su número y el motivo quedarán en el historial, pero la ficha y sus fotos saldrán del catálogo. Esta acción no se puede deshacer.`;
+  $('#void-reason').value = '';
   $('#delete-confirm').returnValue = ''; $('#delete-confirm').showModal();
   const confirmed = await new Promise(resolve => $('#delete-confirm').addEventListener('close',() => resolve($('#delete-confirm').returnValue === 'delete'),{once:true}));
   if (!confirmed) return;
   busy(true); $('#form-error').textContent = '';
   try {
-    const {photoCleanupFailed} = await db.remove({id:item.id,revision:item.revision,photoPath:item.photo_path,extraPhotos:item.extra_photos});
+    const {photoCleanupFailed} = await db.remove({id:item.id,revision:item.revision,photoPath:item.photo_path,extraPhotos:item.extra_photos,reason:$('#void-reason').value.trim()});
     state.items = state.items.filter(row => row.id !== item.id);
     state.dirty = false; state.photo = null; $('#editor').close();
     clearExtraPhotos();
     if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
-    updateCategoryFilter(); render(); toast(`${item.code} borrado.`);
+    updateCategoryFilter(); render(); toast(`${item.code} anulado. El número queda conservado en el historial.`);
+    await refresh(true);
     if (photoCleanupFailed) {
-      $('#list-error').textContent = 'El registro se borró, pero quedaron fotos pendientes de quitar del almacenamiento.'; $('#list-error').hidden = false;
+      $('#list-error').textContent = 'El inventario quedó anulado, pero quedaron fotos pendientes de quitar del almacenamiento.'; $('#list-error').hidden = false;
     }
   } catch (error) { $('#form-error').textContent = errorText(error); }
   finally { busy(false); }
