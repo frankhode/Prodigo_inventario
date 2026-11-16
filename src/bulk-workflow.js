@@ -2,6 +2,7 @@
 import { compressPhoto } from './photos.js';
 import { orderedBulkFolderImages } from './batch.js';
 import { getPublishedCollections, readPublishedCatalog, downloadCatalogImage } from './catalog-import.js';
+import { retryBulkTransfer } from './bulk-retry.js';
 
 const $ = selector => document.querySelector(selector);
 const fmt = number => 'P'+String(number).padStart(6,'0');
@@ -229,16 +230,31 @@ export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,onB
     catch(error){message(error);return;}
     if (!window.confirm(`Vas a reservar ${chosen().length} números a partir de ${fmt(number)}. Se conservarán definitivamente, aunque no termines de etiquetar todas las fotos. ¿Continuar?`)) return;
     setBusy(true); view('uploading');
-    const selected = chosen();
-    const paths = [...uploads.values(),...Array.from(extraUploads.values()).flat()];
+    const selected=chosen();
+    let phase='Preparación de fotografías';
+    let savedBatch=null;
+    const reportRetry=(label)=> (attempt,error)=>{
+      $('#bulk-upload-progress').textContent=
+        `${label} · servidor temporalmente no disponible (${String(error?.message||error)}). Reintento ${attempt+1}/3…`;
+    };
     try {
       for (let index=0;index<selected.length;index++) {
         const item = selected[index];
         $('#bulk-upload-progress').textContent=`Preparando y subiendo fotografía ${index+1} de ${selected.length}: ${item.filename}`;
         if (!uploads.has(item.id)) {
-          const file=item.sourceKey ? await downloadCatalogImage(item.files[0].src) : item.file;
+          phase=`Descarga de fotografía ${index+1}/${selected.length}: ${item.filename}`;
+          const file=item.sourceKey
+            ?await retryBulkTransfer(()=>downloadCatalogImage(item.files[0].src),{
+              onRetry:reportRetry(phase)
+            })
+            :item.file;
+          phase=`Conversión de fotografía ${index+1}/${selected.length}: ${item.filename}`;
           const blob=await compressPhoto(file);
-          const path=await getDb().stageBulkPhoto(item.id,getUser().id,blob);
+          phase=`Transferencia de fotografía ${index+1}/${selected.length}: ${item.filename}`;
+          const path=await retryBulkTransfer(
+            ()=>getDb().stageBulkPhoto(item.id,getUser().id,blob),
+            {onRetry:reportRetry(phase)}
+          );
           uploads.set(item.id,path);
         }
         if(item.sourceKey) {
@@ -247,13 +263,21 @@ export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,onB
             if(savedExtras[partIndex-1])continue;
             const part=item.files[partIndex];
             $('#bulk-upload-progress').textContent=`Fotografía ${index+1}/${selected.length} · ${part.side}: ${part.filename}`;
-            const original=await downloadCatalogImage(part.src);
+            phase=`Descarga de ${part.side}, fotografía ${index+1}/${selected.length}: ${part.filename}`;
+            const original=await retryBulkTransfer(()=>downloadCatalogImage(part.src),{
+              onRetry:reportRetry(phase)
+            });
+            phase=`Transferencia de ${part.side}, fotografía ${index+1}/${selected.length}: ${part.filename}`;
             const blob=await compressPhoto(original);
-            savedExtras[partIndex-1]=await getDb().stageBulkPhoto(item.id,getUser().id,blob);
+            savedExtras[partIndex-1]=await retryBulkTransfer(
+              ()=>getDb().stageBulkPhoto(item.id,getUser().id,blob),
+              {onRetry:reportRetry(phase)}
+            );
             extraUploads.set(item.id,savedExtras);
           }
         }
       }
+      phase='Reserva definitiva del rango de inventarios';
       $('#bulk-upload-progress').textContent='Verificando numeración y creando el lote…';
       const result=await getDb().createBulkBatch({
         id:stagingId,expectedStart:number,common,
@@ -265,19 +289,24 @@ export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,onB
           }:{})
         }))
       });
+      savedBatch=result; // Reserva confirmada. Un error al refrescar no la revierte.
       releaseStage();
-      await loadBatch(result);
-      await onBatchCreated?.();
+      try {
+        await loadBatch(result);
+        await onBatchCreated?.();
+      } catch(error) {
+        notify(`Lote ${fmt(result.start_number)}–${fmt(result.end_number)} reservado correctamente. Si no lo ves, usá Actualizar.`);
+      }
       notify(`Lote creado: ${fmt(result.start_number)}–${fmt(result.end_number)}.`);
     } catch (error) {
-      // Errores antes de confirmación SQL no crean fichas; las imágenes quedan
-      // disponibles para reintentar sin subirlas dos veces.
-      message(error);
-      const notice=document.createElement('p'); notice.textContent='Los archivos ya subidos se conservarán para reintentar sin repetir la transferencia. Si el correlativo no coincide, corregí la primera etiqueta física.';
-      $('#bulk-upload-progress').replaceChildren(notice);
       view('metadata');
-      $('#bulk-error').textContent=error?.message || 'No se pudo crear el lote.';
-    } finally { setBusy(false); }
+      const uncertain=error?.code==='BULK_RESERVATION_UNCERTAIN';
+      $('#bulk-error').textContent=`${phase}: ${error?.message||'No se pudo completar la operación.'}`;
+      if(!uncertain && !savedBatch && phase!=='Reserva definitiva del rango de inventarios'){
+        $('#bulk-error').textContent+=' Los archivos ya transferidos se conservarán para reintentarlo desde esta ventana.';
+      }
+      if(uncertain)$('#bulk-create').disabled=true;
+    } finally { setBusy(false); if($('#bulk-error').textContent.includes('No sabemos si se creó el lote')) $('#bulk-create').disabled=true; }
   }
   async function loadBatch(record) {
     setBusy(true);
