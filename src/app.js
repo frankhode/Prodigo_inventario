@@ -5,14 +5,16 @@ import { Camera, cameraError } from './camera.js';
 import { createCropEditor, cropThumbnail, validCrop } from './photo-crop.js';
 import { orderedBatchImages } from './batch.js';
 import { mountBulkWorkflow } from './bulk-workflow.js';
+import { unlinkedBulkEntries } from './bulk-list.js';
 import { Zip, ZipPassThrough, strToU8 } from 'fflate';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const state = {items:[],terms:[],voids:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoPath:null,photoUrl:null,crop:null,gallery:[],dirty:false,busy:false,loading:false,user:null};
+const state = {items:[],pendingBulk:[],terms:[],voids:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoPath:null,photoUrl:null,crop:null,gallery:[],dirty:false,busy:false,loading:false,user:null};
 const stepTitles = ['Foto y objeto','Marca','Modelo','Fecha y numeración','Tipo','Destino y revisión'];
 const config = globalThis.PRODIGO_CONFIG;
 let db;
+let bulkWorkflow;
 let batch = null;
 let batchEditing = false;
 let referenceUrl = null;
@@ -73,7 +75,8 @@ $('#signup-form').addEventListener('submit',async event => {
   } finally { $('#signup-submit').disabled = false; $('#back-to-login').disabled = false; }
 });
 async function enterApp() {
-  const snapshot = await db.load(); Object.assign(state,snapshot);
+  const [snapshot,groups] = await Promise.all([db.load(),db.pendingBulkCatalog()]);
+  Object.assign(state,snapshot,{pendingBulk:unlinkedBulkEntries(groups)});
   $('#member-name').textContent = snapshot.member.display_name;
   $('#auth').hidden = true; $('#loading').hidden = true; $('#app').hidden = false;
   updateCategoryFilter(); render();
@@ -82,7 +85,8 @@ async function refresh(duringSave = false) {
   if (state.loading || (state.busy && duringSave !== true)) return;
   state.loading = true; $('#refresh').disabled = true;
   try {
-    const snapshot = await db.load(); Object.assign(state,snapshot);
+    const [snapshot,groups] = await Promise.all([db.load(),db.pendingBulkCatalog()]);
+    Object.assign(state,snapshot,{pendingBulk:unlinkedBulkEntries(groups)});
     $('#list-error').hidden = true; updateCategoryFilter(); render();
   } catch (error) { $('#list-error').textContent = errorText(error); $('#list-error').hidden = false; }
   finally { state.loading = false; $('#refresh').disabled = false; }
@@ -96,49 +100,99 @@ $('#login-form').addEventListener('submit',async event => {
   finally { $('#login-submit').disabled = false; }
 });
 $('#logout').addEventListener('click',async () => {
-  try { await db.logout(); batch = null; renderBatchControls(); state.items = []; state.terms = []; state.voids = []; state.user = null; $('#items').replaceChildren(); showAuth(); }
+  try { await db.logout(); batch = null; renderBatchControls(); state.items = []; state.pendingBulk = []; state.terms = []; state.voids = []; state.user = null; $('#items').replaceChildren(); showAuth(); }
   catch (error) { toast(errorText(error)); }
 });
 $('#refresh').addEventListener('click',refresh);
 function updateCategoryFilter() {
   const selected = $('#category-filter').value;
-  const values = [...new Set(state.items.map(i => i.category))].sort((a,b) => a.localeCompare(b,'es'));
+  const values = [...new Set([...state.items,...state.pendingBulk].map(i => i.category))].sort((a,b) => a.localeCompare(b,'es'));
   $('#category-filter').replaceChildren(new Option('Todos los objetos',''),...values.map(v => new Option(v,v)));
   if (values.includes(selected)) $('#category-filter').value = selected;
 }
 function visibleItems() {
-  const query = normalize($('#search').value.trim()), category = $('#category-filter').value, label = $('#label-filter').value;
-  const visible = state.items.filter(i => (!state.destination || i.destination === state.destination) && (!category || i.category === category)
-    && (label === 'all' || Boolean(i.label_confirmed_at) === (label === 'done'))
-    && (!query || normalize([i.code,i.category,i.brand,i.model,i.manufacture_date,i.original_number,i.type,i.notes,i.catalog_source?.collection_name,JSON.stringify(i.catalog_source?.record||{}),destinations[i.destination]].join(' ')).includes(query)));
-  if ($('#sort').value === 'brand') return visible.sort((a,b) => a.brand.localeCompare(b.brand,'es') || a.model.localeCompare(b.model,'es') || a.number-b.number);
-  return visible.sort((a,b) => $('#sort').value === 'old' ? a.number-b.number : b.number-a.number);
+  const query=normalize($('#search').value.trim()),category=$('#category-filter').value;
+  const label=$('#label-filter').value;
+  const visible=[...state.items,...state.pendingBulk].filter(item=>{
+    if(state.destination&&item.destination!==state.destination)return false;
+    if(category&&item.category!==category)return false;
+    if(label==='done'&&(!item.label_confirmed_at||item.isBulkUnlinked))return false;
+    if(label==='pending'&&item.label_confirmed_at)return false;
+    if(label==='unlinked'&&!item.isBulkUnlinked)return false;
+    return !query||normalize([
+      item.code,item.category,item.brand,item.model,item.manufacture_date,
+      item.original_number,item.type,item.notes,item.original_filename,
+      item.catalog_source?.collection_name,
+      JSON.stringify(item.catalog_source?.record||{}),
+      destinations[item.destination]
+    ].join(' ')).includes(query);
+  });
+  const sort=$('#sort').value;
+  if(sort==='brand')return visible.sort((a,b)=>
+    (a.brand||'').localeCompare(b.brand||'','es')
+    ||(a.model||'').localeCompare(b.model||'','es')
+    ||(a.original_filename||'').localeCompare(b.original_filename||'','es')
+    ||Number(a.number||0)-Number(b.number||0));
+  const order=(a,b)=>{
+    if(a.isBulkUnlinked!==b.isBulkUnlinked)return a.isBulkUnlinked?-1:1;
+    if(a.isBulkUnlinked&&b.isBulkUnlinked)
+      return (b.created_at||'').localeCompare(a.created_at||'')
+        ||(a.original_filename||'').localeCompare(b.original_filename||'','es');
+    return Number(b.number)-Number(a.number);
+  };
+  visible.sort(order);
+  return sort==='old'?[...visible].reverse():visible;
 }
 function render() {
-  $('#count-total').textContent = state.items.length;
-  $('#count-unlabeled').textContent = state.items.filter(i => !i.label_confirmed_at).length;
-  $('#count-labeled').textContent = state.items.filter(i => Boolean(i.label_confirmed_at)).length;
-  $('#count-voids').textContent = state.voids.length;
-  for (const key of Object.keys(destinations)) $(`#count-${key}`).textContent = state.items.filter(i => i.destination === key).length;
-  const visible = visibleItems(); $('#result-count').textContent = visible.length;
+  const all=[...state.items,...state.pendingBulk];
+  $('#count-total').textContent=all.length;
+  $('#count-unlabeled').textContent=all.filter(i=>!i.label_confirmed_at).length;
+  $('#count-labeled').textContent=state.items.filter(i=>Boolean(i.label_confirmed_at)).length;
+  $('#count-bulk-unlinked').textContent=state.pendingBulk.length;
+  $('#count-voids').textContent=state.voids.length;
+  for(const key of Object.keys(destinations)) $(
+    `#count-${key}`).textContent=all.filter(i=>i.destination===key).length;
+  const visible=visibleItems();$('#result-count').textContent=visible.length;
   $('#items').replaceChildren(...visible.slice(0,state.limit).map(card));
-  $('#empty').hidden = state.items.length > 0; $('#no-results').hidden = !state.items.length || visible.length > 0;
-  $('#more-items').hidden = visible.length <= state.limit;
-  $('#footer-count').textContent = `${state.items.length} objetos registrados`;
+  $('#empty').hidden=all.length>0;
+  $('#no-results').hidden=!all.length||visible.length>0;
+  $('#more-items').hidden=visible.length<=state.limit;
+  $('#footer-count').textContent=`${state.items.length} fichas numeradas · ${state.pendingBulk.length} fotografías en lote pendientes de asociación`;
 }
 function card(item) {
-  const button = element('button','card'); button.type = 'button';
-  button.setAttribute('aria-label',`Editar ${item.code}, ${title(item)}`);
-  const picture = element('div','card-image'), img = element('img');
-  img.alt = title(item); img.loading = 'lazy'; picture.append(cropThumbnail(img,item.photo_crop));
-  picture.append(element('span',`label-chip ${item.label_confirmed_at ? 'labeled' : 'pending'}`,item.label_confirmed_at ? 'Etiquetado' : 'Sin etiquetar'));
-  // Solo solicitar fotos de las tarjetas mostradas, nunca de las 5.000 fichas a la vez.
-  db.photoUrl(item.photo_path).then(url => { if (button.isConnected) img.src = url; }).catch(() => { img.alt = 'Foto no disponible. Probá Actualizar.'; });
-  const body = element('div','card-body');
-  body.append(element('span','card-code',item.code),element('h3','',title(item)),element('p','card-meta',[item.category,item.manufacture_date,item.type,item.original_number && `N.º ${item.original_number}`].filter(Boolean).join(' · ')));
-  const bottom = element('div','card-bottom'); bottom.append(element('span',`badge ${item.destination}`,destinations[item.destination]),element('span','card-edit','Editar ficha ↗'));
-  if(item.catalog_source?.collection_name) body.append(element('span','catalog-source-chip',item.catalog_source.collection_name));
-  body.append(bottom); button.append(picture,body); button.addEventListener('click',() => openEditor(item)); return button;
+  const unlinked=Boolean(item.isBulkUnlinked);
+  const label=unlinked?'En lote · Sin número':item.label_confirmed_at?'Etiquetado':'Sin etiquetar';
+  const button=element('button','card'+(unlinked?' card-unlinked':''));
+  button.type='button';
+  button.setAttribute('aria-label',unlinked
+    ?`Abrir fotografía de lote ${item.original_filename}`
+    :`Editar ${item.code}, ${title(item)}`);
+  const picture=element('div','card-image'),img=element('img');
+  img.alt=title(item);img.loading='lazy';
+  picture.append(cropThumbnail(img,item.photo_crop));
+  picture.append(element('span',`label-chip ${unlinked?'unlinked':item.label_confirmed_at?'labeled':'pending'}`,label));
+  db.photoUrl(item.photo_path).then(url=>{
+    if(button.isConnected)img.src=url;
+  }).catch(()=>{img.alt='Foto no disponible. Probá Actualizar.';});
+  const body=element('div','card-body');
+  body.append(element('span','card-code',unlinked?'SIN N.º ASOCIADO':item.code),
+    element('h3','',title(item)),
+    element('p','card-meta',[
+      item.category,item.manufacture_date,item.type,
+      item.original_number&&`N.º ${item.original_number}`
+    ].filter(Boolean).join(' · ')));
+  const bottom=element('div','card-bottom');
+  bottom.append(element('span',`badge ${item.destination}`,destinations[item.destination]),
+    element('span','card-edit',unlinked?'Abrir lote ↗':'Editar ficha ↗'));
+  if(item.catalog_source?.collection_name)
+    body.append(element('span','catalog-source-chip',item.catalog_source.collection_name));
+  if(unlinked)body.append(element('span','catalog-source-chip',
+    `Rango reservado P${String(item.bulkRange.start).padStart(6,'0')}–P${String(item.bulkRange.end).padStart(6,'0')}`));
+  body.append(bottom);button.append(picture,body);
+  button.addEventListener('click',()=>unlinked
+    ?bulkWorkflow?.openBatchFromCatalog(item.bulkBatchId,item.id)
+    :openEditor(item));
+  return button;
 }
 for (const id of ['search','sort','category-filter','label-filter']) $(`#${id}`).addEventListener(id === 'search' ? 'input' : 'change',() => { state.limit = 24; render(); });
 $$('.filter').forEach(button => button.addEventListener('click',() => {
@@ -147,6 +201,11 @@ $$('.filter').forEach(button => button.addEventListener('click',() => {
 }));
 $('#reset-filters').addEventListener('click',() => { $('#search').value = ''; $('#category-filter').value = ''; $('#label-filter').value = 'all'; $('.filter[data-destination=""]').click(); });
 $('#show-unlabeled').addEventListener('click',() => { $('#label-filter').value = 'pending'; state.limit = 24; render(); document.querySelector('.collection').scrollIntoView({behavior:'smooth',block:'start'}); });
+$('#show-bulk-unlinked').addEventListener('click',() => {
+  $('#label-filter').value='unlinked';
+  state.limit=24;render();
+  document.querySelector('.collection').scrollIntoView({behavior:'smooth',block:'start'});
+});
 $('#more-items').addEventListener('click',() => { state.limit += 24; render(); });
 $('#show-voids').addEventListener('click',() => {
   const list = $('#void-history-list');
@@ -749,14 +808,16 @@ $('#export-backup').addEventListener('click',async () => {
 
 document.addEventListener('visibilitychange',() => { if (!document.hidden && !$('#app').hidden && !$('#editor').open) refresh(); });
 setInterval(() => { if (!document.hidden && !$('#app').hidden && !$('#editor').open) refresh(); },60000);
-mountBulkWorkflow({
+bulkWorkflow=mountBulkWorkflow({
   getDb:()=>db,
   getUser:()=>state.user,
   getTerms:()=>state.terms,
   onInventoryChanged:async saved=>{
     state.items=[...state.items.filter(item=>item.id!==saved.id),saved];
-    updateCategoryFilter(); render();
+    state.pendingBulk=state.pendingBulk.filter(item=>item.id!==saved.id);
+    updateCategoryFilter();render();
   },
+  onBatchCreated:async()=>{await refresh(true);},
   notify:toast
 });
 try {
