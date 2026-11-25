@@ -21,7 +21,7 @@ export async function handleCatalog(request, {
   if ((photo !== null && !isCode(photo)) || (after !== null && !isCode(after))) {
     return json({ error: 'Código inválido.' }, 400);
   }
-  if (image !== null && (!photo || !/^[2-8]$/.test(image))) return json({ error: 'Número de foto inválido.' }, 400);
+  if (image !== null && (!photo || !(/^\d+$/.test(image) && Number.isSafeInteger(Number(image)) && Number(image)>=2))) return json({ error: 'Número de foto inválido.' }, 400);
 
   try {
     const root = env('SUPABASE_URL');
