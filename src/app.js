@@ -10,8 +10,7 @@ import { Zip, ZipPassThrough, strToU8 } from 'fflate';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const state = {items:[],pendingBulk:[],terms:[],voids:[],destination:'',limit:24,current:null,draftId:null,step:0,photo:null,photoPath:null,photoUrl:null,crop:null,gallery:[],dirty:false,busy:false,loading:false,user:null};
-const stepTitles = ['Foto y objeto','Marca','Modelo','Fecha y numeración','Tipo','Destino y revisión'];
+const state = {items:[],pendingBulk:[],terms:[],voids:[],destination:'',limit:24,current:null,draftId:null,photo:null,photoPath:null,photoUrl:null,crop:null,gallery:[],dirty:false,busy:false,loading:false,user:null};
 const config = globalThis.PRODIGO_CONFIG;
 let db;
 const derivedRequest=new URLSearchParams(location.search).get('derived');
@@ -445,13 +444,11 @@ $('#label-toggle').addEventListener('click',async () => {
   } catch (error) { toast(errorText(error)); }
   finally { busy(false); }
 });
-function showStep(step) {
-  state.step = step; $('#form-error').textContent = '';
-  $$('.wizard-step').forEach((section,index) => section.hidden = index !== step);
-  $('#step-caption').textContent = `${step+1} de 6 · ${stepTitles[step]}`; $('#step-progress').value = step+1;
-  $('#previous-step').hidden = step === 0; $('#next-step').textContent = step === 5 ? saveLabel() : 'Siguiente →';
-  if (step === 5) renderReview();
-  const heading = $(`#step-title-${step}`); heading.tabIndex = -1; heading.focus({preventScroll:true}); $('#editor').scrollTop = 0;
+function showForm() {
+  $('#form-error').textContent = '';
+  $('#step-caption').textContent = state.current ? 'Editar objeto' : 'Nuevo objeto';
+  $('#next-step').textContent = saveLabel();
+  $('#editor').scrollTop = 0;
 }
 async function openEditor(item = null) {
   state.current = item; state.draftId = item?.id || (batchEditing ? (batch.draftId ??= crypto.randomUUID()) : crypto.randomUUID()); state.photo = null;
@@ -477,7 +474,7 @@ async function openEditor(item = null) {
   $('#photo-status').textContent = 'La portada se usa en la grilla.';
   renderExtraPhotos();
   renderBatchReference();
-  $('#editor').showModal(); showStep(0);
+  $('#editor').showModal(); showForm();
   if (item) {
     try { const url = await db.photoUrl(item.photo_path); if ($('#editor').open && state.current?.id === item.id && state.photoPath === item.photo_path && !state.photo) showPhoto(url); }
     catch { $('#photo-status').textContent = 'No se pudo mostrar la foto. Podés conservarla o reemplazarla.'; }
@@ -591,7 +588,6 @@ $('#batch-reference-image').addEventListener('error',event => {
 });
 renderBatchControls();
 
-$('#previous-step').addEventListener('click',() => { if (!state.busy) showStep(Math.max(0,state.step-1)); });
 async function closeEditor() {
   if (state.busy) return;
   if (state.dirty) {
@@ -688,14 +684,10 @@ $('#item-form').addEventListener('submit',async event => {
   let continueBatch = false;
   try {
     for (const field of combos) {
-      const step = {category:0,brand:1,model:2,type:4}[field];
-      if (state.step === step && $(`#${field}-select`).value === '__new__' && !comboValue(field)) throw Error('Escribí el nombre de la nueva opción o elegí otra del listado.');
+      if ($(`#${field}-select`).value === '__new__' && !comboValue(field)) throw Error('Escribí el nombre de la nueva opción o elegí otra del listado.');
     }
-    if (state.step === 0) {
-      if (!state.photo && !state.photoPath) throw Error('Tomá o elegí una foto.');
-      if (!comboValue('category')) throw Error('Elegí el objeto.');
-    }
-    if (state.step < 5) { showStep(state.step+1); return; }
+    if (!state.photo && !state.photoPath) throw Error('Tomá o elegí una foto.');
+    if (!comboValue('category')) throw Error('Elegí el objeto.');
     const record = {...validate(values()),photo_crop:state.crop}; busy(true); $('#next-step').textContent = 'Guardando…';
     const saved = await db.save({id:state.draftId,revision:state.current?.revision || 0,values:record,photo:state.photo,photoPath:state.photoPath,previousPhotoPath:state.current?.photo_path,userId:state.user.id,
       gallery:state.gallery,previousExtraPhotos:state.current?.extra_photos});
@@ -720,7 +712,7 @@ $('#item-form').addEventListener('submit',async event => {
     $('#editor').close();
     if (!savedFromBatch) { busy(false); await refresh(); }
   } catch (error) { $('#form-error').textContent = errorText(error); }
-  finally { busy(false); $('#next-step').textContent = state.step === 5 ? saveLabel() : 'Siguiente →'; }
+  finally { busy(false); $('#next-step').textContent = saveLabel(); }
   if (continueBatch) await openBatchItem();
 });
 
