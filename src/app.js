@@ -280,7 +280,6 @@ function renderReview() {
   const rows = [['Objeto',v.category],['Marca',v.brand],['Modelo',v.model],['Fecha',v.manufacture_date],['N.º de serie / numeración original',v.original_number],['Tipo',v.type]];
   $('#review').replaceChildren(...rows.flatMap(([label,value]) => [element('dt','',label),element('dd','',value || 'Sin consignar')]));
 }
-const maxExtraPhotos = 7;
 
 function clearExtraPhotos() {
   for (const photo of state.gallery) if (photo.url) URL.revokeObjectURL(photo.url);
@@ -288,8 +287,8 @@ function clearExtraPhotos() {
   $('#extra-photos-list').replaceChildren();
 }
 function updateExtraPhotoControls() {
-  $('#add-extra-photos').disabled = state.busy || state.gallery.length >= maxExtraPhotos;
-  $('#extra-photos-count').textContent = `${state.gallery.length} de ${maxExtraPhotos} adicionales`;
+  $('#add-extra-photos').disabled = state.busy;
+  $('#extra-photos-count').textContent = `${state.gallery.length} adicionales`;
 }
 function renderExtraPhotos() {
   $('#extra-photos-list').replaceChildren(...state.gallery.map((photo,index) => {
@@ -355,10 +354,6 @@ $('#extra-photos-input').addEventListener('change',async event => {
   const files = [...event.target.files];
   event.target.value = '';
   if (!files.length || state.busy) return;
-  if (files.length > maxExtraPhotos - state.gallery.length) {
-    $('#form-error').textContent = 'Elegí hasta siete fotos adicionales en total.';
-    return;
-  }
   busy(true);
   $('#form-error').textContent = '';
   try {
