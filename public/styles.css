@@ -209,3 +209,36 @@
 .card-unlinked .card-code{color:#895e1a}
 .label-summary #show-bulk-unlinked{font-size:12px;min-height:40px;display:inline-flex;align-items:center;gap:5px}
 .label-summary #show-bulk-unlinked strong{font-variant-numeric:tabular-nums}
+
+/* Inventory editor: all fields in one continuous form. */
+#editor{width:min(960px,calc(100% - 32px))}
+#editor .wizard-progress{position:sticky;top:0;background:white;z-index:3;padding:8px 20px;border-bottom:1px solid var(--line)}
+#editor .wizard-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:18px;padding:16px 20px;min-height:0;align-items:start}
+#editor .wizard-body>.batch-reference{grid-column:1/-1}
+#editor .inventory-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0}
+#editor .inventory-fields>section{min-width:0}
+#editor .inventory-fields>section:nth-child(1),#editor .inventory-fields>section:nth-child(4),#editor .inventory-fields>section:last-child{grid-column:1/-1}
+#editor .inventory-fields .combo{margin:0}
+#editor .inventory-fields section:nth-child(4){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#editor .inventory-fields .destination-field{margin:0 0 12px}
+#editor .inventory-fields .hint:empty,#editor #item-dates:empty{display:none}
+#editor #photo-status{margin:5px 0}
+#editor .wizard-step .photo-stage{aspect-ratio:1.7;max-height:240px}
+#editor .extra-photos{margin-top:10px}
+#editor .dialog-bottom{padding:10px 20px}
+#editor .dialog-actions{margin-left:auto}
+@media(max-width:700px){
+#editor{width:100%;max-width:100%;height:100dvh;max-height:100dvh;margin:0;border:0;border-radius:0}
+#editor .wizard-progress{padding:5px 10px}
+#editor .wizard-body{display:flex;flex-direction:column;gap:12px;padding:10px 12px 16px}
+#editor .wizard-body>section,#editor .inventory-fields,#editor .batch-reference{width:100%}
+#editor .wizard-step .photo-stage{aspect-ratio:auto;height:clamp(120px,23dvh,210px);max-height:none}
+#editor .photo-buttons{flex-direction:row;margin-top:6px}
+#editor .inventory-fields{gap:10px 8px}
+#editor .inventory-fields section:nth-child(4){gap:8px}
+#editor .inventory-fields input:not([type=radio]),#editor .inventory-fields select,#editor .inventory-fields textarea{font-size:16px;min-height:44px;padding:8px}
+#editor .inventory-fields label{font-size:12px}
+#editor .dialog-bottom{padding:8px 12px max(8px,env(safe-area-inset-bottom));flex-wrap:wrap;gap:6px}
+#editor .dialog-bottom>.error{flex-basis:100%;max-width:none}
+#editor .dialog-actions{flex:1}#editor #next-step{width:100%}
+}
