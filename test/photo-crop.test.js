@@ -52,5 +52,18 @@ test('la galería pública expone el total y solo sirve fotos de fichas del muse
   assert.equal(await (await request('?foto=P000001&imagen=2')).text(),'jpeg');
   assert.equal((await request('?foto=P000002&imagen=2')).status,404);
   assert.equal((await request('?foto=P000001&imagen=3')).status,404);
-  assert.equal((await request('?foto=P000001&imagen=9')).status,400);
+  assert.equal((await request('?foto=P000001&imagen=9')).status,404);
+  assert.equal((await request('?foto=P000001&imagen=0')).status,400);
+  assert.equal((await request('?foto=P000001&imagen=abc')).status,400);
+});
+
+ test('la galería pública sirve una novena foto y posteriores si existen', async () => {
+  const paths=Array.from({length:12},(_,i)=>'private/item/'+(i+2)+'.jpg');
+  const env=name=>({SUPABASE_URL:'https://fixture.example.test/',SUPABASE_SERVICE_ROLE_KEY:'fixture'})[name];
+  const fetchImpl=async url=>{if(url.pathname.startsWith('/storage/'))return new Response(url.pathname.split('/').at(-1));assert.equal(url.searchParams.get('destination'),'eq.museo');return Response.json([{code:'P000001',extra_photos:paths}]);};
+  const request=query=>handleCatalog(new Request('https://fixture.example.test/catalog'+query),{env,fetchImpl});
+  assert.equal((await (await request('')).json()).items[0].photo_count,13);
+  assert.equal(await (await request('?foto=P000001&imagen=9')).text(),'9.jpg');
+  assert.equal(await (await request('?foto=P000001&imagen=13')).text(),'13.jpg');
+  assert.equal((await request('?foto=P000001&imagen=14')).status,404);
 });
