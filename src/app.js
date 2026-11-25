@@ -14,6 +14,8 @@ const state = {items:[],pendingBulk:[],terms:[],voids:[],destination:'',limit:24
 const stepTitles = ['Foto y objeto','Marca','Modelo','Fecha y numeración','Tipo','Destino y revisión'];
 const config = globalThis.PRODIGO_CONFIG;
 let db;
+const derivedRequest=new URLSearchParams(location.search).get('derived');
+let derivedPending=Boolean(window.opener&&/^[a-f0-9-]{36}$/.test(derivedRequest||''));
 let bulkWorkflow;
 let batch = null;
 let batchEditing = false;
@@ -80,6 +82,7 @@ async function enterApp() {
   $('#member-name').textContent = snapshot.member.display_name;
   $('#auth').hidden = true; $('#loading').hidden = true; $('#app').hidden = false;
   updateCategoryFilter(); render();
+  if(derivedPending&&!$('#editor').open)await openEditor();
 }
 async function refresh(duringSave = false) {
   if (state.loading || (state.busy && duringSave !== true)) return;
@@ -470,6 +473,7 @@ async function openEditor(item = null) {
   for (const field of combos) fillCombo(field,item?.[field] || '');
   $('#manufacture-date').value = item?.manufacture_date || ''; $('#original-number').value = item?.original_number || ''; $('#notes').value = item?.notes || '';
   if (item) $('#item-form').elements.destination.value = item.destination;
+  else if(derivedPending) $('#item-form').elements.destination.value='museo';
   $('#editor-code').textContent = item?.code || '';
   $('#editor-code').hidden = !item;
   $('#editor').setAttribute('aria-label',item ? `Editar ${item.code}, ${title(item)}` : 'Ficha de inventario');
@@ -701,6 +705,7 @@ $('#item-form').addEventListener('submit',async event => {
     const saved = await db.save({id:state.draftId,revision:state.current?.revision || 0,values:record,photo:state.photo,photoPath:state.photoPath,previousPhotoPath:state.current?.photo_path,userId:state.user.id,
       gallery:state.gallery,previousExtraPhotos:state.current?.extra_photos});
     state.items = [...state.items.filter(i => i.id !== saved.id),saved];
+    if(derivedPending&&!state.current&&!batchEditing){derivedPending=false;window.opener?.postMessage({type:'prodigo-inventory-created',request:derivedRequest,code:saved.code},location.origin);}
     const savedFromBatch = batchEditing;
     if (savedFromBatch) {
       batch.index += batch.nextIsObject ? 1 : 2;
