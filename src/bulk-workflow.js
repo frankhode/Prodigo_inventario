@@ -3,6 +3,7 @@ import { compressPhoto } from './photos.js';
 import { orderedBulkFolderImages } from './batch.js';
 import { getPublishedCollections, readPublishedCatalog, downloadCatalogImage } from './catalog-import.js';
 import { retryBulkTransfer } from './bulk-retry.js';
+import { isTypewriter } from './machine-details.js';
 
 const $ = selector => document.querySelector(selector);
 const fmt = number => 'P'+String(number).padStart(6,'0');
@@ -212,6 +213,7 @@ export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,onB
   let nextNumberRequest=0;
   async function refreshNextNumber() {
     const category=safeText($('#bulk-category').value);
+    $('#bulk-number-label').textContent=isTypewriter(category)?'Número de serie':'Numeración original';
     const request=++nextNumberRequest;
     if(!category)return;
     $('#bulk-number-range-hint').textContent='Consultando correlativo de '+category+'…';
@@ -383,6 +385,7 @@ export function mountBulkWorkflow({getDb,getUser,getTerms,onInventoryChanged,onB
   }
   function openImage(item) {
     focused=item;
+    $('#bulk-detail-number-label').textContent=$('#bulk-number-label').textContent=isTypewriter(batch.common_values.category)?'Número de serie':'Numeración original';
     const number=assignedNumber(item.id),labeled=isLabeled(item.id),next=pendingSlot();
     $('#bulk-detail-filename').textContent=item.original_filename;
     $('#bulk-detail-number').textContent=number?fmt(number):next?fmt(next.number):'Sin números disponibles';

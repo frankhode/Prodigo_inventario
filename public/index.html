@@ -88,7 +88,7 @@
 </div></section><div class="inventory-fields"><section class="wizard-step"><div class="combo" data-field="category"><label for="category-input">Objeto <span class="required">*</span></label><input id="category-input" maxlength="120"><div class="field-suggestions" id="category-suggestions" hidden></div></div></section>
 <section class="wizard-step"><div class="combo" data-field="brand"><label for="brand-input">Marca</label><input id="brand-input" maxlength="120"><div class="field-suggestions" id="brand-suggestions" hidden></div></div></section>
 <section class="wizard-step"><div class="combo" data-field="model"><label for="model-input">Modelo</label><input id="model-input" maxlength="120"><div class="field-suggestions" id="model-suggestions" hidden></div></div><p id="model-help" class="hint"></p></section>
-<section class="wizard-step"><label id="date-field">Fecha<input id="manufacture-date" maxlength="80" placeholder="Ej. 1930 / ca. 1930 / 15/06/1950 / 1930–1940"></label><div class="combo" id="number-field"><label><span id="number-label">N.º de serie / numeración original</span> <span class="optional">opcional</span><input id="original-number" maxlength="120" placeholder="Ej. 000127, A-0458"></label></div></section>
+<section class="wizard-step"><label id="date-field">Fecha<input id="manufacture-date" maxlength="80" placeholder="Ej. 1930 / ca. 1930 / 15/06/1950 / 1930–1940"></label><div class="combo" id="number-field"><label><span id="number-label">Numeración original</span> <span class="optional">opcional</span><input id="original-number" maxlength="120" placeholder="Ej. 000127, A-0458"></label></div></section>
 <section class="wizard-step"><div class="combo" data-field="type"><label for="type-input">Tipo</label><input id="type-input" maxlength="120"><div class="field-suggestions" id="type-suggestions" hidden></div></div></section>
 <section id="guided-details" class="wizard-step" hidden></section><section class="wizard-step"><fieldset class="destination-field"><legend>Destino <span class="required" id="destination-required">*</span></legend><button type="button" class="text-button" id="clear-destination" hidden>Dejar sin destino</button><div class="destination-options"><label><input type="radio" name="destination" value="museo"><span><i class="dot museum"></i>Museo</span></label><label><input type="radio" name="destination" value="tienda"><span><i class="dot shop"></i>Tienda</span></label><label><input type="radio" name="destination" value="otros"><span><i class="dot other"></i>Otros</span></label></div></fieldset><label>Notas <span class="optional">opcional</span><textarea id="notes" rows="3" maxlength="4000" placeholder="Estado, ubicación, número de serie…"></textarea></label><p id="item-dates" class="hint"></p></section></div>
 </div><div class="dialog-bottom"><p id="form-error" class="error" role="alert"></p><button type="button" class="text-button delete-item" id="delete-item" hidden>Borrar registro</button><div class="dialog-actions"><button type="button" class="button subtle" id="guided-back" hidden>Volver</button><button type="button" class="button subtle" id="guided-skip" hidden>Omitir</button><button type="submit" class="button primary" id="next-step">Guardar objeto</button></div></div>
@@ -149,7 +149,7 @@
     <label>Autor / marca<input id="bulk-brand" maxlength="120" placeholder="Opcional"></label>
     <label>Modelo<input id="bulk-model" maxlength="120" placeholder="Opcional"></label>
     <label id="date-field">Fecha<input id="bulk-date" maxlength="80" placeholder="ca. 1900"></label>
-    <label>Número original<input id="bulk-original-number" maxlength="120"></label>
+    <label><span id="bulk-number-label">Numeración original</span><input id="bulk-original-number" maxlength="120"></label>
     <label>Tipo<input id="bulk-type" maxlength="120" placeholder="Retrato, gabinete…"></label>
     <label class="bulk-wide">Notas generales<textarea id="bulk-notes" rows="2" maxlength="4000"></textarea></label>
   </div>
@@ -178,7 +178,7 @@
       <div class="bulk-fields">
         <label>Autor / marca<input id="bulk-detail-brand" maxlength="120"></label>
         <label id="date-field">Fecha<input id="bulk-detail-date" maxlength="80"></label>
-        <label>Número original<input id="bulk-detail-original-number" maxlength="120"></label>
+        <label><span id="bulk-detail-number-label">Numeración original</span><input id="bulk-detail-original-number" maxlength="120"></label>
         <label>Tipo<input id="bulk-detail-type" maxlength="120"></label>
         <label class="bulk-wide">Notas<textarea id="bulk-detail-notes" rows="3" maxlength="4000"></textarea></label>
       </div>

@@ -1,5 +1,5 @@
 import { attachSuggestions } from './suggestions.js';
-import {isTypewriter,machineDetails,typewriterForm,typewriterTypes} from './machine-details.js';
+import {isTypewriter,machineDetails,typewriterForm,typewriterTypes,operatingSystems} from './machine-details.js';
 import { createGuidedIntake, materialFields, materialGroup } from './guided-intake.js';
 import { connect } from './data.js';
 import { destinations, normalize, title, validate, csv, exportRecord, photoFiles } from './core.js';
@@ -289,18 +289,19 @@ const standardMaterialFields = {
   date:'#date-field', number:'#number-field', type:'[data-field="type"]',
 };
 function detailValues() {
-  return Object.fromEntries($$('#guided-details input')
+  return Object.fromEntries($$('#guided-details input, #guided-details select')
     .map(input => [input.dataset.intakeField,input.value.trim()])
-    .filter(([name,value]) => value || name==='Tipo' || name==='Distribución del teclado'));
+    .filter(([name,value]) => value || name==='Tipo' || name==='Distribución del teclado' || name==='Sistema de funcionamiento'));
 }
 function renderMaterialFields(saved = {}) {
   const category = comboValue('category');
   const fields = materialFields(category);
   const machine=isTypewriter(category);
   $('[for=type-input]').textContent = machine ? 'Versión' : 'Tipo';
-  $('#number-label').textContent=machine?'Número de serie':'N.º de serie / numeración original';
+  $('#number-label').textContent=machine?'Número de serie':'Numeración original';
   if(machine)saved=machineDetails(saved);
   const details = $('#guided-details');
+  details.classList.toggle('machine-details',machine);
   const onlyMaterial = intake.active || Boolean(state.current?.guided_details);
   $('[data-field="category"]').closest('section').hidden = intake.active && Boolean(intake.material);
   for (const [key,selector] of Object.entries(standardMaterialFields)) {
@@ -314,11 +315,17 @@ function renderMaterialFields(saved = {}) {
   details.replaceChildren(...[...new Set([...extra,...Object.keys(saved)])].map((name,index) => {
     const machineLabels = {'País':'País de fabricación'};
     const label = element('label','',machine ? machineLabels[name] ?? name : name);
-    const input = element('input');
+    const fixedSystem=machine&&name==='Sistema de funcionamiento';
+    const input = element(fixedSystem?'select':'input');
+    if(fixedSystem){
+      for(const value of ['',...operatingSystems,...(saved[name]&&!operatingSystems.includes(saved[name])?[saved[name]]:[])]){
+        const option=element('option','',value||'Sin especificar');option.value=value;input.append(option);
+      }
+    }
     input.value = saved[name] ?? '';
     input.maxLength = 240;
     input.dataset.intakeField = name;
-    if(machine&&name==='Distribución del teclado'){
+    if(machine&&['Distribución del teclado','Versión / país (dato anterior)'].includes(name)){
       // Keep cataloguer data even though keyboard layout is not an intake field.
       input.type='hidden';
       return input;
@@ -328,7 +335,9 @@ function renderMaterialFields(saved = {}) {
     const field = element('div','combo');
     const list = element('div','field-suggestions');
     list.id = `${input.id}-suggestions`;
-    field.append(label,input,list);
+    field.append(label,input);
+    if(fixedSystem)return field;
+    field.append(list);
     if(machine&&name==='Tipo') input.placeholder='Portátil, Escritorio…';
     attachSuggestions(input,list,() => [
       ...(machine&&name==='Tipo'?typewriterTypes:[]),

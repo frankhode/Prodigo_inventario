@@ -274,3 +274,7 @@
 
 #loading-retry{margin-top:12px}
 #loading-retry[hidden]{display:none}
+
+/* Align the machine fields with the first page of the cataloguer. */
+#guided-details.machine-details{display:contents}
+#guided-details select{width:100%;min-width:0}

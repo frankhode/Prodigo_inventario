@@ -1,6 +1,7 @@
 import {normalize} from './core.js';
 export const isTypewriter=category=>/^maquinas? (?:de )?escribir$/.test(normalize(category).trim().replace(/\s+/g,' '));
-export const typewriterDetails=['Color','País','Idioma del teclado','Tipo'];
+export const typewriterDetails=['Sistema de funcionamiento','Color','País','Idioma del teclado','Tipo'];
+export const operatingSystems=['Mecánico','Electromecánico','Electrónico'];
 export const typewriterTypes=['Portátil','Escritorio','Ultraportátil'];
 const isLegacyType=value=>/^(?:de escritorio|escritorio|portatil|ultraportatil)$/.test(normalize(value).trim());
 const countries=['Argentina','Estados Unidos','Italia','Alemania','Reino Unido','Francia','Suiza','Japón','España'];

@@ -318,3 +318,12 @@ Los respaldos nuevos incluyen los códigos anulados, la historia de etiquetado, 
 
 ### Campos compartidos de máquinas
 El campo de numeración de la ficha de una máquina se muestra como «Número de serie» y usa la columna existente `original_number`. La versión de la máquina usa la columna `type` (la etiqueta actual es «Versión»). Los detalles de máquina usan Color, País de fabricación, Idioma del teclado y Tipo (Portátil, Escritorio, Ultraportátil u otros). El tipo de máquina se guarda como `guided_details.fields.Tipo`, separado de la versión y de la distribución del teclado. El valor antiguo de distribución se conserva sin mostrarlo en la ficha de inventario. Si el tipo anterior era exactamente Portátil, Escritorio, De escritorio o Ultraportátil, se recupera en Tipo al editar una ficha que todavía no tiene ese campo. Los datos combinados previos se interpretan al abrir la ficha y se conservan al guardar. Para las demás categorías se mantiene «N.º de serie / numeración original». La ficha del catalogador de máquinas consume estos mismos campos de inventario y puede corregirlos mediante su RPC compartido (activar la migración 202611260002 del repositorio de catalogación).
+
+### Identificación de máquinas compartida con el catalogador
+
+El campo `original_number` se presenta como **Número de serie** para máquinas de escribir
+y como **Numeración original** para otros materiales, sin mover los valores existentes.
+**Sistema de funcionamiento** se guarda en `guided_details.fields["Sistema de funcionamiento"]`
+(Mecánico, Electromecánico, Electrónico o vacío) y no sustituye Tipo, Versión ni el idioma del teclado.
+Para poder modificarlo también desde la primera pestaña del catalogador debe aplicarse
+la migración `202611260004_identification.sql` del repositorio prodigo-catalogador-maquinas.
