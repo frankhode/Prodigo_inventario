@@ -68,6 +68,7 @@ export function connect(config) {
     },
     async save({id,revision,values,photo,photoPath,previousPhotoPath = photoPath,userId,gallery,previousExtraPhotos = []}) {
       const extraFields = [];
+      if (values.guided_details) extraFields.push('guided_details');
       if (values.original_number) extraFields.push('original_number');
       if (values.photo_crop) extraFields.push('photo_crop');
       if (gallery?.length) extraFields.push('extra_photos');
@@ -76,13 +77,14 @@ export function connect(config) {
         const schema = await client.from('inventory_items').select(extraFields.join(',')).limit(0);
         if (schema.error?.code === '42703') {
           const message = schema.error.message;
+          if (message.includes('guided_details')) throw Error('La carga asistida requiere activar la migración en Supabase.');
           const field = message.includes('extra_photos') ? 'La galería'
             : message.includes('photo_crop') ? 'El recorte' : 'La numeración original';
           throw Error(field + ' todavía no está disponible. Consultá a Pródigo.');
         }
         check(schema);
       }
-      const path = photo ? await uploadPhoto(id,userId,photo) : photoPath;
+      const path = photo ? await uploadPhoto(id,userId,photo) : photoPath ?? null;
       if (gallery) {
         const extras = new Set();
         for (const entry of gallery) extras.add(entry.path ?? await uploadPhoto(id,userId,entry.blob));
