@@ -1,4 +1,4 @@
-import { createGuidedIntake } from './guided-intake.js';
+import { createGuidedIntake, materialFields, materialGroup } from './guided-intake.js';
 import { connect } from './data.js';
 import { destinations, normalize, title, validate, csv, exportRecord, photoFiles } from './core.js';
 import { compressPhoto, compressFrame } from './photos.js';
@@ -255,7 +255,7 @@ function fillCombo(field,value = '') {
   const known = values.find(v => normalize(v) === normalize(value));
   select.value = known || (value ? '__new__' : ''); input.value = known ? '' : value; input.hidden = select.value !== '__new__';
   if (field === 'model') {
-    select.disabled = !state.current?.guided_details && !comboValue('brand'); input.disabled = select.disabled;
+    select.disabled = !intake.active && !state.current?.guided_details && !comboValue('brand'); input.disabled = select.disabled;
     $('#model-help').textContent = select.disabled ? 'Elegí una marca para habilitar el modelo.' : '';
   }
 }
@@ -263,26 +263,62 @@ for (const field of combos) {
   $(`#${field}-select`).addEventListener('change',() => {
     const input = $(`#${field}-new`); input.hidden = $(`#${field}-select`).value !== '__new__';
     if (!input.hidden) input.focus();
-    if (field === 'category') { fillCombo('brand'); fillCombo('model'); fillCombo('type'); }
+    if (field === 'category') { fillCombo('brand'); fillCombo('model'); fillCombo('type'); renderMaterialFields(detailValues()); }
     if (field === 'brand') fillCombo('model');
     state.dirty = true;
   });
   $(`#${field}-new`).addEventListener('input',() => {
-    if (field === 'category') { fillCombo('brand'); fillCombo('model'); fillCombo('type'); }
+    if (field === 'category') { fillCombo('brand'); fillCombo('model'); fillCombo('type'); renderMaterialFields(detailValues()); }
     if (field === 'brand') fillCombo('model');
   });
 }
-const intake = createGuidedIntake({$,fillCombo,comboValue,markDirty:() => { state.dirty = true; }});
+const standardMaterialFields = {
+  brand:'[data-field="brand"]', model:'[data-field="model"]',
+  date:'#date-field', number:'#number-field', type:'[data-field="type"]',
+};
+function detailValues() {
+  return Object.fromEntries($$('#guided-details input')
+    .map(input => [input.dataset.intakeField,input.value.trim()])
+    .filter(([,value]) => value));
+}
+function renderMaterialFields(saved = {}) {
+  const category = comboValue('category');
+  const fields = materialFields(category);
+  const details = $('#guided-details');
+  const onlyMaterial = intake.active || Boolean(state.current?.guided_details);
+  $('[data-field="category"]').closest('section').hidden = intake.active && Boolean(intake.material);
+  for (const [key,selector] of Object.entries(standardMaterialFields)) {
+    const control = $(selector);
+    const wrapper = ['date','number'].includes(key) ? control : control.closest('section');
+    const existingValue = key === 'date' || key === 'number' ? control.querySelector('input').value : comboValue(key);
+    wrapper.hidden = onlyMaterial && !fields.includes(key) && !existingValue;
+  }
+  const extra = onlyMaterial || materialGroup(category)
+    ? fields.filter(field => !Object.hasOwn(standardMaterialFields,field)) : [];
+  details.replaceChildren(...[...new Set([...extra,...Object.keys(saved)])].map(name => {
+    const label = element('label','',name);
+    const input = element('input');
+    input.value = saved[name] ?? '';
+    input.maxLength = 240;
+    input.dataset.intakeField = name;
+    label.append(input);
+    return label;
+  }));
+  details.hidden = !details.children.length;
+}
+const intake = createGuidedIntake({$,onMaterial(material) {
+  const current = comboValue('category');
+  if (material !== current) {
+    $('#original-number').value = '';
+    for (const field of combos) fillCombo(field,field === 'category' ? material : '');
+    state.dirty = true;
+  }
+  renderMaterialFields(material === current ? detailValues() : {});
+}});
 function values() {
   return {category:comboValue('category'),brand:comboValue('brand'),model:comboValue('model'),type:comboValue('type'),
     manufacture_date:$('#manufacture-date').value.trim(),original_number:$('#original-number').value.trim(),destination:$('#item-form').elements.destination.value,notes:$('#notes').value.trim()};
 }
-function renderReview() {
-  const v = values();
-  const rows = [['Objeto',v.category],['Marca',v.brand],['Modelo',v.model],['Fecha',v.manufacture_date],['N.º de serie / numeración original',v.original_number],['Tipo',v.type]];
-  $('#review').replaceChildren(...rows.flatMap(([label,value]) => [element('dt','',label),element('dd','',value || 'Sin consignar')]));
-}
-
 function clearExtraPhotos() {
   for (const photo of state.gallery) if (photo.url) URL.revokeObjectURL(photo.url);
   state.gallery = [];
@@ -465,10 +501,10 @@ async function openEditor(item = null) {
   renderCatalogSource(item);
   if (state.photoUrl) URL.revokeObjectURL(state.photoUrl); state.photoUrl = null;
   state.dirty = false; $('#item-form').reset();
-  for (const field of combos) fillCombo(field,item?.[field] || '');
+  const assisted = !item && !batchEditing && !derivedPending;
   $('#manufacture-date').value = item?.manufacture_date || ''; $('#original-number').value = item?.original_number || ''; $('#notes').value = item?.notes || '';
-  $('#destination-required').hidden = Boolean(item?.guided_details);
-  $('#clear-destination').hidden = !item?.guided_details;
+  $('#destination-required').hidden = Boolean(item?.guided_details) || assisted;
+  $('#clear-destination').hidden = !item?.guided_details && !assisted;
   if (item) $('#item-form').elements.destination.value = item.destination ?? '';
   else if(derivedPending) $('#item-form').elements.destination.value='museo';
   $('#editor-code').textContent = item?.code || '';
@@ -479,22 +515,11 @@ async function openEditor(item = null) {
   $('#photo-status').textContent = 'La portada se usa en la grilla.';
   renderExtraPhotos();
   renderBatchReference();
-  const details = $('#guided-details');
-  details.replaceChildren();
-  details.hidden = !item?.guided_details;
-  if (item?.guided_details?.group) details.append(element('dt','','Grupo'),element('dd','',item.guided_details.group));
-  for (const [label,value] of Object.entries(item?.guided_details?.fields ?? {})) {
-    const input = element('input');
-    input.value = value;
-    input.maxLength = 240;
-    input.setAttribute('aria-label',label);
-    input.dataset.intakeField = label;
-    const cell = element('dd');
-    cell.append(input);
-    details.append(element('dt','',label),cell);
-  }
+  for (const field of combos) fillCombo(field,item?.[field] || '');
   $('#editor').showModal(); showForm();
-  intake.start(!item && !batchEditing && !derivedPending);
+  intake.start(assisted);
+  fillCombo('model',item?.model || '');
+  renderMaterialFields(item?.guided_details?.fields);
   if (item?.photo_path) {
     try { const url = await db.photoUrl(item.photo_path); if ($('#editor').open && state.current?.id === item.id && state.photoPath === item.photo_path && !state.photo) showPhoto(url); }
     catch { $('#photo-status').textContent = 'No se pudo mostrar la foto. Podés conservarla o reemplazarla.'; }
@@ -524,7 +549,7 @@ function busy(value) {
   state.busy = value;
   $$('#item-form button, #item-form input, #item-form select, #item-form textarea').forEach(control => control.disabled = value);
   updateExtraPhotoControls();
-  if (!value) { $('#model-select').disabled = !state.current?.guided_details && !comboValue('brand'); $('#model-new').disabled = $('#model-select').disabled; }
+  if (!value) { $('#model-select').disabled = !intake.active && !state.current?.guided_details && !comboValue('brand'); $('#model-new').disabled = $('#model-select').disabled; }
 }
 $('#new-item').addEventListener('click',() => openEditor()); $('#empty-new').addEventListener('click',() => openEditor());
 $('#clear-destination').addEventListener('click',() => {
@@ -705,22 +730,24 @@ for (const input of [$('#camera-input'),$('#gallery-input')]) input.addEventList
 });
 $('#item-form').addEventListener('submit',async event => {
   event.preventDefault(); if (state.busy) return;
-  if (intake.active && !intake.reviewing) { intake.advance(); return; }
+  if (intake.choosing) return;
   let continueBatch = false;
   try {
     const guided = intake.active || Boolean(state.current?.guided_details);
     for (const field of combos) {
-      if (!intake.active && $(`#${field}-select`).value === '__new__' && !comboValue(field)) throw Error('Escribí el nombre de la nueva opción o elegí otra del listado.');
+      if (!$(`#${field}-select`).closest('section').hidden && $(`#${field}-select`).value === '__new__' && !comboValue(field)) throw Error('Escribí el nombre de la nueva opción o elegí otra del listado.');
     }
     if (!guided && !state.photo && !state.photoPath) throw Error('Tomá o elegí una foto.');
     const entered = values();
     if (intake.active && !entered.category) entered.category = 'Sin clasificar';
     const record = {...validate(entered,{guided}),photo_crop:state.crop};
-    if (intake.active) record.guided_details = intake.values();
-    else if (guided) record.guided_details = {
-      group:state.current.guided_details.group,
-      fields:Object.fromEntries($$('[data-intake-field]').map(input => [input.dataset.intakeField,input.value.trim()])),
-    };
+    const specifics = detailValues();
+    if (guided || Object.keys(specifics).length) {
+      record.guided_details = {
+        group:materialGroup(entered.category) || intake.group || state.current?.guided_details?.group || '',
+        fields:specifics,
+      };
+    }
     if (!state.photo && !state.photoPath && state.gallery.length) throw Error('Elegí una de las fotos como principal.');
     busy(true); $('#next-step').textContent = 'Guardando…';
     const saved = await db.save({id:state.draftId,revision:state.current?.revision || 0,values:record,photo:state.photo,photoPath:state.photoPath,previousPhotoPath:state.current?.photo_path,userId:state.user.id,
