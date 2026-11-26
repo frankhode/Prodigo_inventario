@@ -489,5 +489,21 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       assert.ok(Number(machine.number)<1000);
       assert.deepEqual((await db.query('select guided_details from public.inventory_items where id=$1',[id])).rows[0].guided_details,v.guided_details);
     });
+    await t.test('La reparación permite guardar más de siete fotos adicionales',async () => {
+      await db.exec('reset role');
+      await db.exec('alter table public.inventory_items add constraint inventory_items_extra_photos_check check (cardinality(extra_photos) <= 7) not valid');
+      const repair=await readFile(new URL('../supabase/migrations/202611260002_restore_unlimited_gallery.sql',import.meta.url),'utf8');
+      await db.exec(repair);
+      await db.exec(repair);
+      await as(users[0]);
+      const id=randomUUID(),cover=await upload(users[0],id),extra=[];
+      for (let i=0;i<9;i++) {
+        const path=`${users[0]}/${id}/${String(i).padStart(64,'0')}.jpg`;
+        await db.query("insert into storage.objects values ('inventory-photos',$1)",[path]);
+        extra.push(path);
+      }
+      const result=(await save(id,0,{...values,extra_photos:extra},cover)).rows[0];
+      assert.deepEqual(result.extra_photos,extra);
+    });
   } finally { await db.close(); }
 });

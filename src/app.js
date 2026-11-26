@@ -308,7 +308,8 @@ function renderMaterialFields(saved = {}) {
   const extra = onlyMaterial || materialGroup(category)
     ? fields.filter(field => !Object.hasOwn(standardMaterialFields,field)) : [];
   details.replaceChildren(...[...new Set([...extra,...Object.keys(saved)])].map((name,index) => {
-    const label = element('label','',machine&&name==='País'?'País de fabricación':name);
+    const machineLabels = {'País':'País de fabricación','Distribución del teclado':'Tipo de teclado'};
+    const label = element('label','',machine ? machineLabels[name] ?? name : name);
     const input = element('input');
     input.value = saved[name] ?? '';
     input.maxLength = 240;
