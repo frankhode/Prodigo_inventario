@@ -266,3 +266,8 @@
   #editor.material-intake .inventory-fields{order:-1}
   #guided-details{gap:10px 8px}
 }
+
+#editor .inventory-fields .combo{position:relative}
+.field-suggestions{position:absolute;top:100%;left:0;right:0;z-index:2;max-height:220px;overflow:auto;background:white;border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 14px #252d2820}
+.field-suggestions [role="option"]{padding:10px 12px;cursor:pointer;overflow-wrap:anywhere}
+.field-suggestions [role="option"]:hover,.field-suggestions [aria-selected="true"]{background:#edf1e7}
