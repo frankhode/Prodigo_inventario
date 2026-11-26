@@ -1,5 +1,5 @@
 import { attachSuggestions } from './suggestions.js';
-import {isTypewriter,machineDetails,legacyVersion} from './machine-details.js';
+import {isTypewriter,machineDetails,typewriterForm,typewriterTypes} from './machine-details.js';
 import { createGuidedIntake, materialFields, materialGroup } from './guided-intake.js';
 import { connect } from './data.js';
 import { destinations, normalize, title, validate, csv, exportRecord, photoFiles } from './core.js';
@@ -181,10 +181,11 @@ function card(item) {
     if(button.isConnected)img.src=url;
   }).catch(()=>{img.alt='Foto no disponible. Probá Actualizar.';});
   const body=element('div','card-body');
+  const machineForm=isTypewriter(item.category)?typewriterForm(item):null;
   body.append(element('span','card-code',unlinked?'SIN N.º ASOCIADO':item.code),
     element('h3','',title(item)),
     element('p','card-meta',[
-      item.category,item.manufacture_date,item.type,
+      item.category,item.manufacture_date,machineForm?.fields.Tipo,machineForm?machineForm.version:item.type,
       item.original_number&&`N.º ${item.original_number}`
     ].filter(Boolean).join(' · ')));
   const bottom=element('div','card-bottom');
@@ -247,6 +248,9 @@ const combos = ['category','brand','model','type'];
 function comboValue(field) { return $(`#${field}-input`).value.trim(); }
 function optionsFor(field) {
   const category = comboValue('category'), brand = comboValue('brand');
+  if(field==='type'&&isTypewriter(category)){
+    return state.items.filter(item=>isTypewriter(item.category)).map(item=>typewriterForm(item).version).filter(Boolean);
+  }
   return state.terms.filter(t => t.kind === field && (field === 'category' || normalize(t.category) === normalize(category))
     && (field !== 'model' || normalize(t.parent_name) === normalize(brand))).map(t => t.name);
 }
@@ -287,7 +291,7 @@ const standardMaterialFields = {
 function detailValues() {
   return Object.fromEntries($$('#guided-details input')
     .map(input => [input.dataset.intakeField,input.value.trim()])
-    .filter(([,value]) => value));
+    .filter(([name,value]) => value || name==='Tipo' || name==='Distribución del teclado'));
 }
 function renderMaterialFields(saved = {}) {
   const category = comboValue('category');
@@ -308,21 +312,29 @@ function renderMaterialFields(saved = {}) {
   const extra = onlyMaterial || materialGroup(category)
     ? fields.filter(field => !Object.hasOwn(standardMaterialFields,field)) : [];
   details.replaceChildren(...[...new Set([...extra,...Object.keys(saved)])].map((name,index) => {
-    const machineLabels = {'País':'País de fabricación','Distribución del teclado':'Tipo de teclado'};
+    const machineLabels = {'País':'País de fabricación'};
     const label = element('label','',machine ? machineLabels[name] ?? name : name);
     const input = element('input');
     input.value = saved[name] ?? '';
     input.maxLength = 240;
     input.dataset.intakeField = name;
+    if(machine&&name==='Distribución del teclado'){
+      // Keep cataloguer data even though keyboard layout is not an intake field.
+      input.type='hidden';
+      return input;
+    }
     input.id = `material-field-${index}`;
     label.htmlFor = input.id;
     const field = element('div','combo');
     const list = element('div','field-suggestions');
     list.id = `${input.id}-suggestions`;
     field.append(label,input,list);
-    attachSuggestions(input,list,() => state.items
-      .filter(item => normalize(item.category) === normalize(category))
-      .map(item => (machine?machineDetails(item.guided_details?.fields):item.guided_details?.fields)?.[name]).filter(value => typeof value === 'string' && value));
+    if(machine&&name==='Tipo') input.placeholder='Portátil, Escritorio…';
+    attachSuggestions(input,list,() => [
+      ...(machine&&name==='Tipo'?typewriterTypes:[]),
+      ...state.items.filter(item => machine?isTypewriter(item.category):normalize(item.category)===normalize(category))
+        .map(item => (machine?typewriterForm(item).fields:item.guided_details?.fields)?.[name]).filter(value => typeof value === 'string' && value)
+    ]);
     return field;
   }));
   details.hidden = !details.children.length;
@@ -536,11 +548,12 @@ async function openEditor(item = null) {
   $('#photo-status').textContent = 'La portada se usa en la grilla.';
   renderExtraPhotos();
   renderBatchReference();
-  for (const field of combos) fillCombo(field,item?.[field] || (field==='type'&&isTypewriter(item?.category)?legacyVersion(item?.guided_details?.fields):''));
+  const machineForm=isTypewriter(item?.category)?typewriterForm(item):null;
+  for (const field of combos) fillCombo(field,field==='type'&&machineForm?machineForm.version:item?.[field]||'');
   $('#editor').showModal(); showForm();
   intake.start(assisted);
   fillCombo('model',item?.model || '');
-  renderMaterialFields(item?.guided_details?.fields);
+  renderMaterialFields(machineForm?.fields??item?.guided_details?.fields);
   if (item?.photo_path) {
     try { const url = await db.photoUrl(item.photo_path); if ($('#editor').open && state.current?.id === item.id && state.photoPath === item.photo_path && !state.photo) showPhoto(url); }
     catch { $('#photo-status').textContent = 'No se pudo mostrar la foto. Podés conservarla o reemplazarla.'; }

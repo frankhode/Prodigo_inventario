@@ -486,6 +486,10 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       const machineId = randomUUID();
       const machine = (await save(machineId,0,{...values,brand:'',guided_details:{group:'Oficina',fields:{}}},null)).rows[0];
       assert.equal(machine.model,values.model);
+      const machineEdited=(await save(machineId,1,{...values,type:'Segunda serie',guided_details:{group:'Oficina',fields:{Tipo:'Portátil','Idioma del teclado':'Español','Distribución del teclado':'QWERTY'}}},null)).rows[0];
+      assert.equal(machineEdited.type,'Segunda serie');
+      assert.equal(machineEdited.guided_details.fields.Tipo,'Portátil');
+      assert.equal(machineEdited.guided_details.fields['Distribución del teclado'],'QWERTY');
       assert.ok(Number(machine.number)<1000);
       assert.deepEqual((await db.query('select guided_details from public.inventory_items where id=$1',[id])).rows[0].guided_details,v.guided_details);
     });
