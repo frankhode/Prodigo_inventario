@@ -1,4 +1,5 @@
 import { attachSuggestions } from './suggestions.js';
+import {isTypewriter,machineDetails,legacyVersion} from './machine-details.js';
 import { createGuidedIntake, materialFields, materialGroup } from './guided-intake.js';
 import { connect } from './data.js';
 import { destinations, normalize, title, validate, csv, exportRecord, photoFiles } from './core.js';
@@ -291,8 +292,10 @@ function detailValues() {
 function renderMaterialFields(saved = {}) {
   const category = comboValue('category');
   const fields = materialFields(category);
-  const machine = /^maquinas? de escribir$/.test(normalize(category));
+  const machine=isTypewriter(category);
   $('[for=type-input]').textContent = machine ? 'Versión' : 'Tipo';
+  $('#number-label').textContent=machine?'Número de serie':'N.º de serie / numeración original';
+  if(machine)saved=machineDetails(saved);
   const details = $('#guided-details');
   const onlyMaterial = intake.active || Boolean(state.current?.guided_details);
   $('[data-field="category"]').closest('section').hidden = intake.active && Boolean(intake.material);
@@ -305,7 +308,7 @@ function renderMaterialFields(saved = {}) {
   const extra = onlyMaterial || materialGroup(category)
     ? fields.filter(field => !Object.hasOwn(standardMaterialFields,field)) : [];
   details.replaceChildren(...[...new Set([...extra,...Object.keys(saved)])].map((name,index) => {
-    const label = element('label','',name === 'Versión / país' ? 'Versión / país (dato anterior)' : name);
+    const label = element('label','',machine&&name==='País'?'País de fabricación':name);
     const input = element('input');
     input.value = saved[name] ?? '';
     input.maxLength = 240;
@@ -318,7 +321,7 @@ function renderMaterialFields(saved = {}) {
     field.append(label,input,list);
     attachSuggestions(input,list,() => state.items
       .filter(item => normalize(item.category) === normalize(category))
-      .map(item => item.guided_details?.fields?.[name]).filter(value => typeof value === 'string' && value));
+      .map(item => (machine?machineDetails(item.guided_details?.fields):item.guided_details?.fields)?.[name]).filter(value => typeof value === 'string' && value));
     return field;
   }));
   details.hidden = !details.children.length;
@@ -532,7 +535,7 @@ async function openEditor(item = null) {
   $('#photo-status').textContent = 'La portada se usa en la grilla.';
   renderExtraPhotos();
   renderBatchReference();
-  for (const field of combos) fillCombo(field,item?.[field] || '');
+  for (const field of combos) fillCombo(field,item?.[field] || (field==='type'&&isTypewriter(item?.category)?legacyVersion(item?.guided_details?.fields):''));
   $('#editor').showModal(); showForm();
   intake.start(assisted);
   fillCombo('model',item?.model || '');

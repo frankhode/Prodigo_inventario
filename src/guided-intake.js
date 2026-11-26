@@ -1,4 +1,5 @@
 import { normalize } from './core.js';
+import {isTypewriter,typewriterDetails} from './machine-details.js';
 
 const equipment = ['brand','model','date','number','type'];
 const artwork = ['Autor','Título o descripción','date','Técnica','number'];
@@ -7,7 +8,7 @@ const documentFields = ['Título o descripción','Emisor o autor','date','number
 const other = ['Nombre del objeto','date'];
 const groups = {
   'Oficina': {
-    'Máquina de escribir': [...equipment,'Color','País','Teclado'],
+    'Máquina de escribir': [...equipment,...typewriterDetails],
     'Mimeógrafo': equipment,
     'Calculadora o sumadora': equipment,
     'Objeto de oficina o librería': ['Nombre del objeto','brand','date','type'],
@@ -50,11 +51,13 @@ const groups = {
 const materials = Object.assign({},...Object.values(groups));
 
 export function materialFields(category) {
+  if(isTypewriter(category))return materials['Máquina de escribir'];
   const name = Object.keys(materials).find(name => normalize(name) === normalize(category));
   return name ? materials[name] : other;
 }
 
 export function materialGroup(category) {
+  if(isTypewriter(category))return 'Oficina';
   return Object.keys(groups).find(group => Object.keys(groups[group])
     .some(name => normalize(name) === normalize(category))) ?? '';
 }

@@ -314,3 +314,7 @@ Los respaldos nuevos incluyen los códigos anulados, la historia de etiquetado, 
 **Pendiente para la tercera etapa:** importación directa de las colecciones del catalogador fotográfico, con frentes/reversos y sus metadatos normalizados, sin cargar de nuevo los archivos de origen.
 
 
+
+
+### Campos compartidos de máquinas
+El campo de numeración de la ficha de una máquina se muestra como «Número de serie» y usa la columna existente `original_number`. La versión de la máquina usa la columna `type` (la etiqueta actual es «Versión»). Los detalles de máquina usan Color, País de fabricación, Idioma del teclado y Distribución del teclado. Los datos combinados previos se interpretan al abrir la ficha y se conservan al guardar. Para las demás categorías se mantiene «N.º de serie / numeración original». La ficha del catalogador de máquinas consume estos mismos campos de inventario y puede corregirlos mediante su RPC compartido (activar la migración 202611260002 del repositorio de catalogación).
