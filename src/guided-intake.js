@@ -7,7 +7,7 @@ const documentFields = ['Título o descripción','Emisor o autor','date','number
 const other = ['Nombre del objeto','date'];
 const groups = {
   'Oficina': {
-    'Máquina de escribir': [...equipment,'Color','Versión / país','Teclado'],
+    'Máquina de escribir': [...equipment,'Color','País','Teclado'],
     'Mimeógrafo': equipment,
     'Calculadora o sumadora': equipment,
     'Objeto de oficina o librería': ['Nombre del objeto','brand','date','type'],
