@@ -1,3 +1,4 @@
+import { attachSuggestions } from './suggestions.js';
 import { createGuidedIntake, materialFields, materialGroup } from './guided-intake.js';
 import { connect } from './data.js';
 import { destinations, normalize, title, validate, csv, exportRecord, photoFiles } from './core.js';
@@ -242,34 +243,40 @@ setThumbnailSize(savedThumbnailSize);
 $('#thumbnail-size').addEventListener('change',event => setThumbnailSize(event.target.value));
 
 const combos = ['category','brand','model','type'];
-function comboValue(field) { const select = $(`#${field}-select`); return select.value === '__new__' ? $(`#${field}-new`).value.trim() : select.value; }
+function comboValue(field) { return $(`#${field}-input`).value.trim(); }
 function optionsFor(field) {
   const category = comboValue('category'), brand = comboValue('brand');
   return state.terms.filter(t => t.kind === field && (field === 'category' || normalize(t.category) === normalize(category))
     && (field !== 'model' || normalize(t.parent_name) === normalize(brand))).map(t => t.name);
 }
+function updateModelAvailability() {
+  const model = $('#model-input');
+  model.disabled = !intake.active && !state.current?.guided_details && !comboValue('brand');
+  $('#model-help').textContent = model.disabled ? 'Elegí una marca para habilitar el modelo.' : '';
+}
+const closeSuggestions = {};
+const committedTerms = {};
 function fillCombo(field,value = '') {
-  const values = [...new Set(optionsFor(field))].sort((a,b) => a.localeCompare(b,'es'));
-  const select = $(`#${field}-select`), input = $(`#${field}-new`);
-  select.replaceChildren(new Option(field === 'category' ? 'Elegí un objeto' : 'Sin consignar',''),...values.map(v => new Option(v,v)),new Option(`＋ Agregar ${field === 'category' ? 'objeto' : field === 'brand' ? 'marca' : field === 'model' ? 'modelo' : 'tipo'}…`,'__new__'));
-  const known = values.find(v => normalize(v) === normalize(value));
-  select.value = known || (value ? '__new__' : ''); input.value = known ? '' : value; input.hidden = select.value !== '__new__';
-  if (field === 'model') {
-    select.disabled = !intake.active && !state.current?.guided_details && !comboValue('brand'); input.disabled = select.disabled;
-    $('#model-help').textContent = select.disabled ? 'Elegí una marca para habilitar el modelo.' : '';
-  }
+  const known = optionsFor(field).find(option => normalize(option) === normalize(value));
+  $(`#${field}-input`).value = known || value;
+  committedTerms[field] = normalize(known || value);
+  closeSuggestions[field]();
+  if (field === 'model') updateModelAvailability();
 }
 for (const field of combos) {
-  $(`#${field}-select`).addEventListener('change',() => {
-    const input = $(`#${field}-new`); input.hidden = $(`#${field}-select`).value !== '__new__';
-    if (!input.hidden) input.focus();
-    if (field === 'category') { fillCombo('brand'); fillCombo('model'); fillCombo('type'); renderMaterialFields(detailValues()); }
-    if (field === 'brand') fillCombo('model');
+  const input = $(`#${field}-input`);
+  closeSuggestions[field] = attachSuggestions(input,$(`#${field}-suggestions`),() => optionsFor(field));
+  input.addEventListener('change',() => {
+    const previous = committedTerms[field];
+    fillCombo(field,comboValue(field));
+    if (previous !== committedTerms[field]) {
+      if (field === 'category') {
+        fillCombo('brand'); fillCombo('model'); fillCombo('type');
+        renderMaterialFields(detailValues());
+      }
+      if (field === 'brand') fillCombo('model');
+    }
     state.dirty = true;
-  });
-  $(`#${field}-new`).addEventListener('input',() => {
-    if (field === 'category') { fillCombo('brand'); fillCombo('model'); fillCombo('type'); renderMaterialFields(detailValues()); }
-    if (field === 'brand') fillCombo('model');
   });
 }
 const standardMaterialFields = {
@@ -295,14 +302,22 @@ function renderMaterialFields(saved = {}) {
   }
   const extra = onlyMaterial || materialGroup(category)
     ? fields.filter(field => !Object.hasOwn(standardMaterialFields,field)) : [];
-  details.replaceChildren(...[...new Set([...extra,...Object.keys(saved)])].map(name => {
+  details.replaceChildren(...[...new Set([...extra,...Object.keys(saved)])].map((name,index) => {
     const label = element('label','',name);
     const input = element('input');
     input.value = saved[name] ?? '';
     input.maxLength = 240;
     input.dataset.intakeField = name;
-    label.append(input);
-    return label;
+    input.id = `material-field-${index}`;
+    label.htmlFor = input.id;
+    const field = element('div','combo');
+    const list = element('div','field-suggestions');
+    list.id = `${input.id}-suggestions`;
+    field.append(label,input,list);
+    attachSuggestions(input,list,() => state.items
+      .filter(item => normalize(item.category) === normalize(category))
+      .map(item => item.guided_details?.fields?.[name]).filter(value => typeof value === 'string' && value));
+    return field;
   }));
   details.hidden = !details.children.length;
 }
@@ -549,7 +564,7 @@ function busy(value) {
   state.busy = value;
   $$('#item-form button, #item-form input, #item-form select, #item-form textarea').forEach(control => control.disabled = value);
   updateExtraPhotoControls();
-  if (!value) { $('#model-select').disabled = !intake.active && !state.current?.guided_details && !comboValue('brand'); $('#model-new').disabled = $('#model-select').disabled; }
+  if (!value) updateModelAvailability();
 }
 $('#new-item').addEventListener('click',() => openEditor()); $('#empty-new').addEventListener('click',() => openEditor());
 $('#clear-destination').addEventListener('click',() => {
@@ -734,9 +749,6 @@ $('#item-form').addEventListener('submit',async event => {
   let continueBatch = false;
   try {
     const guided = intake.active || Boolean(state.current?.guided_details);
-    for (const field of combos) {
-      if (!$(`#${field}-select`).closest('section').hidden && $(`#${field}-select`).value === '__new__' && !comboValue(field)) throw Error('Escribí el nombre de la nueva opción o elegí otra del listado.');
-    }
     if (!guided && !state.photo && !state.photoPath) throw Error('Tomá o elegí una foto.');
     const entered = values();
     if (intake.active && !entered.category) entered.category = 'Sin clasificar';
