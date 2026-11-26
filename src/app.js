@@ -291,6 +291,8 @@ function detailValues() {
 function renderMaterialFields(saved = {}) {
   const category = comboValue('category');
   const fields = materialFields(category);
+  const machine = /^maquinas? de escribir$/.test(normalize(category));
+  $('[for=type-input]').textContent = machine ? 'Versión' : 'Tipo';
   const details = $('#guided-details');
   const onlyMaterial = intake.active || Boolean(state.current?.guided_details);
   $('[data-field="category"]').closest('section').hidden = intake.active && Boolean(intake.material);
@@ -303,7 +305,7 @@ function renderMaterialFields(saved = {}) {
   const extra = onlyMaterial || materialGroup(category)
     ? fields.filter(field => !Object.hasOwn(standardMaterialFields,field)) : [];
   details.replaceChildren(...[...new Set([...extra,...Object.keys(saved)])].map((name,index) => {
-    const label = element('label','',name);
+    const label = element('label','',name === 'Versión / país' ? 'Versión / país (dato anterior)' : name);
     const input = element('input');
     input.value = saved[name] ?? '';
     input.maxLength = 240;
