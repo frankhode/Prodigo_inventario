@@ -7,7 +7,7 @@ const documentFields = ['Título o descripción','Emisor o autor','date','number
 const other = ['Nombre del objeto','date'];
 const groups = {
   'Oficina': {
-    'Máquina de escribir': equipment,
+    'Máquina de escribir': [...equipment,'Color','Versión / país','Teclado'],
     'Mimeógrafo': equipment,
     'Calculadora o sumadora': equipment,
     'Objeto de oficina o librería': ['Nombre del objeto','brand','date','type'],
@@ -47,218 +47,91 @@ const groups = {
   },
 };
 
-export function createGuidedIntake({$, fillCombo, comboValue, markDirty}) {
-  const form = $('#item-form');
-  const panel = $('#guided-fields');
-  const editor = $('#editor');
-  const back = $('#guided-back');
-  const next = $('#guided-next');
-  const save = $('#next-step');
-  const photo = $('#photo-step');
-  const full = $('.inventory-fields');
-  let active = false;
-  let step = 0;
-  let group = '';
-  let details = {};
-  let path = [];
+const materials = Object.assign({},...Object.values(groups));
 
-  const nativeFields = {
-    brand: ['Marca','#brand-select'], model: ['Modelo','#model-select'],
-    type: ['Tipo','#type-select'], date: ['Fecha','#manufacture-date'],
-    number: ['Numeración original','#original-number'],
-  };
-  const caption = {
-    group: '¿Qué deseás cargar?', material: 'Tipo de material',
-    destination: 'Destino', notes: 'Notas', photo: 'Fotos y revisión',
-  };
-  const choices = { museo:'Museo', tienda:'Tienda', otros:'Otros' };
-  function node(tag, text = '') {
-    const result = document.createElement(tag);
-    result.textContent = text;
-    return result;
-  }
-  function selectMaterial(value) {
-    for (const field of ['category','brand','model','type']) fillCombo(field,field === 'category' ? value : '');
-    for (const selector of ['#manufacture-date','#original-number']) $(selector).value = '';
-    details = {};
-  }
-  function buildPath() {
-    const category = comboValue('category');
-    const configured = Object.values(groups).find(materials => Object.hasOwn(materials,category))?.[category];
-    const fields = (configured ?? other).map(key => nativeFields[key] ? {key,native:true} : {key,label:key});
-    path = [{key:'group'},{key:'material'},...fields,...['destination','notes','photo'].map(key=>({key}))];
-  }
-  function addChoices(entries, current, choose) {
-    const list = node('div');
+export function materialFields(category) {
+  const name = Object.keys(materials).find(name => normalize(name) === normalize(category));
+  return name ? materials[name] : other;
+}
+
+export function materialGroup(category) {
+  return Object.keys(groups).find(group => Object.keys(groups[group])
+    .some(name => normalize(name) === normalize(category))) ?? '';
+}
+
+export function createGuidedIntake({$, onMaterial}) {
+  const editor = $('#editor');
+  const panel = $('#guided-fields');
+  const full = $('.inventory-fields');
+  const photo = $('#photo-step');
+  const back = $('#guided-back');
+  const skip = $('#guided-skip');
+  const save = $('#next-step');
+  let active = false;
+  let group = '';
+  let material = '';
+  let screen = 'form';
+
+  function show(target) {
+    screen = target;
+    const choosing = target !== 'form';
+    editor.classList.toggle('guided-intake',choosing);
+    editor.classList.toggle('material-intake',active && !choosing);
+    panel.hidden = !choosing;
+    full.hidden = photo.hidden = save.hidden = choosing;
+    skip.hidden = !choosing;
+    back.hidden = !active || target === 'group';
+    back.textContent = choosing ? 'Volver' : 'Cambiar material';
+    editor.scrollTop = 0;
+    if (!choosing) {
+      if (active) $('#step-caption').textContent = material || 'Sin clasificar';
+      if (active) $('#step-caption').focus();
+      return;
+    }
+    $('#step-caption').textContent = 'Nuevo objeto';
+    const heading = document.createElement('h3');
+    heading.textContent = target === 'group' ? '¿Qué deseás cargar?' : group;
+    heading.tabIndex = -1;
+    const list = document.createElement('div');
     list.className = 'guided-choices';
-    for (const [value,label] of entries) {
-      const button = node('button',label);
+    const choices = target === 'group' ? Object.keys(groups) : Object.keys(groups[group]);
+    for (const value of choices) {
+      const button = document.createElement('button');
       button.type = 'button';
       button.className = 'button secondary';
-      button.setAttribute('aria-pressed',String(value === current));
+      button.textContent = value;
       button.addEventListener('click',() => {
-        choose(value);
-        markDirty();
-        move(1);
+        if (target === 'group') {
+          group = value;
+          show('material');
+        } else choose(value);
       });
       list.append(button);
     }
-    panel.append(list);
-    return list;
-  }
-  function addInput(label, control, receive) {
-    control.id = 'guided-input';
-    const field = node('label',label);
-    field.htmlFor = control.id;
-    field.append(control);
-    control.addEventListener('input',() => receive(control.value));
-    panel.append(field);
-  }
-  function renderNative(key) {
-    const [label, selector] = nativeFields[key];
-    const original = $(selector);
-    if (original.tagName !== 'SELECT') {
-      const input = original.cloneNode();
-      input.value = original.value;
-      addInput(label,input,value => { original.value = value; });
-      return;
-    }
-    const list = addChoices([...original.options].filter(option => option.value && option.value !== '__new__')
-      .map(option => [option.value,option.textContent]),comboValue(key),value => {
-      const changed = comboValue(key) !== value;
-      fillCombo(key,value);
-      if (key === 'brand' && changed) fillCombo('model');
-    });
-    const input = node('input');
-    input.maxLength = 120;
-    input.placeholder = 'Escribí para agregar una opción';
-    input.value = comboValue(key);
-    addInput(`Buscar o agregar ${label.toLowerCase()}`,input,value => {
-      const changed = comboValue(key) !== value.trim();
-      fillCombo(key,value.trim());
-      if (key === 'brand' && changed) fillCombo('model');
-      for (const button of list.children) button.hidden = !normalize(button.textContent).includes(normalize(value.trim()));
-    });
-    panel.append(list);
-  }
-  function render() {
-    const {key,native,label} = path[step];
-    const heading = node('h3',native ? nativeFields[key][0] : label ?? caption[key]);
-    heading.tabIndex = -1;
-    panel.replaceChildren(heading);
-    photo.hidden = key !== 'photo';
-    back.hidden = step === 0;
-    save.hidden = key !== 'photo';
-    next.hidden = key === 'photo';
-    $('#guided-skip').hidden = key === 'photo';
-    next.hidden ||= key === 'group' || (key === 'material' && Boolean(group)) || key === 'destination';
-    $('#step-caption').textContent = `${step + 1} de ${path.length}`;
-    if (key === 'group') addChoices(Object.keys(groups).map(name=>[name,name]),group,value => {
-      if (group !== value) selectMaterial('');
-      group = value;
-    });
-    else if (key === 'material') {
-      const entries = group
-        ? Object.keys(groups[group]).map(name=>[name,name])
-        : [...$('#category-select').options].filter(option => option.value && option.value !== '__new__')
-          .map(option => [option.value,option.textContent]);
-      const list = addChoices(entries,comboValue('category'),value => {
-        if (comboValue('category') !== value) selectMaterial(value);
-      });
-      if (!group) {
-        const input = node('input');
-        input.maxLength = 120;
-        input.value = comboValue('category');
-        addInput('Buscar o escribir el material',input,value => {
-          selectMaterial(value.trim());
-          for (const button of list.children) button.hidden = !normalize(button.textContent).includes(normalize(value.trim()));
-        });
-        panel.append(list);
-      }
-    } else if (native) renderNative(key);
-    else if (key === 'destination') addChoices(Object.entries(choices),form.elements.destination.value,value => {
-      form.elements.destination.value = value;
-    });
-    else if (key === 'notes') {
-      const input = node('textarea');
-      input.rows = 3;
-      input.maxLength = 4000;
-      input.value = $('#notes').value;
-      addInput('Observaciones',input,value => { $('#notes').value = value; });
-    } else if (key === 'photo') {
-      panel.append(node('p',[group,comboValue('category') || 'Sin clasificar'].filter(Boolean).join(' · ')));
-      const summary = node('dl');
-      summary.className = 'review';
-      for (const field of path) {
-        let value = details[field.label];
-        let label = field.label;
-        if (field.native) {
-          const [name, selector] = nativeFields[field.key];
-          label = name;
-          value = $(selector).tagName === 'SELECT' ? comboValue(field.key) : $(selector).value.trim();
-        }
-        if (field.key === 'destination') { label = 'Destino'; value = choices[form.elements.destination.value]; }
-        if (field.key === 'notes') { label = 'Notas'; value = $('#notes').value.trim(); }
-        if (value) summary.append(node('dt',label),node('dd',value));
-      }
-      if (summary.children.length) panel.append(summary);
-    } else {
-      const input = node('input');
-      input.maxLength = 240;
-      input.value = details[label] ?? '';
-      addInput(label,input,value => { details[label] = value.trim(); });
-    }
-    editor.scrollTop = 0;
+    panel.replaceChildren(heading,list);
     heading.focus();
   }
-  function move(direction) {
-    buildPath();
-    step = Math.max(0,Math.min(path.length - 1,step + direction));
-    render();
+
+  function choose(value) {
+    material = value;
+    onMaterial(value);
+    show('form');
   }
-  function skip() {
-    const {key,label} = path[step];
-    if (key === 'group') {
-      if (group) selectMaterial('');
-      group = '';
-    } else if (key === 'material') selectMaterial('');
-    else if (key === 'destination') form.elements.destination.value = '';
-    else if (key === 'notes') $('#notes').value = '';
-    else if (nativeFields[key]) {
-      const control = $(nativeFields[key][1]);
-      if (control.tagName === 'SELECT') fillCombo(key);
-      else control.value = '';
-    } else delete details[label];
-    markDirty();
-    move(1);
-  }
-  panel.addEventListener('keydown',event => {
-    if (event.key !== 'Enter' || event.target.tagName !== 'INPUT' || event.isComposing) return;
-    event.preventDefault();
-    move(1);
+  back.addEventListener('click',() => show(screen === 'form' && group ? 'material' : 'group'));
+  skip.addEventListener('click',() => {
+    if (screen === 'group') group = '';
+    choose('');
   });
-  back.addEventListener('click',() => move(-1));
-  next.addEventListener('click',() => move(1));
-  $('#guided-skip').addEventListener('click',skip);
+
   return {
     start(enabled) {
       active = enabled;
-      group = '';
-      details = {};
-      step = 0;
-      editor.classList.toggle('guided-intake',enabled);
-        full.hidden = enabled;
-      panel.hidden = !enabled;
-      photo.hidden = false;
-      back.hidden = next.hidden = $('#guided-skip').hidden = !enabled;
-      save.hidden = false;
-      if (enabled) { buildPath(); render(); }
+      group = material = '';
+      show(enabled ? 'group' : 'form');
     },
     get active() { return active; },
-    get reviewing() { return path[step]?.key === 'photo'; },
-    advance() { move(1); },
-    values() {
-      return {group,fields:Object.fromEntries(Object.entries(details).filter(([,value]) => value))};
-    },
+    get choosing() { return active && screen !== 'form'; },
+    get material() { return material; },
+    get group() { return group; },
   };
 }

@@ -256,3 +256,13 @@
 #guided-fields label+.guided-choices{margin-top:10px;max-height:42dvh;overflow:auto}
 #editor.guided-intake .dialog-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
 #editor.guided-intake #next-step{width:auto}
+
+#guided-details{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#editor.material-intake .inventory-fields{grid-column:2;grid-row:1}
+#editor.material-intake #photo-step{grid-column:1;grid-row:1}
+#editor.material-intake .dialog-actions{display:flex;gap:8px}
+#editor.material-intake #next-step{width:auto;flex:1}
+@media(max-width:700px){
+  #editor.material-intake .inventory-fields{order:-1}
+  #guided-details{gap:10px 8px}
+}
