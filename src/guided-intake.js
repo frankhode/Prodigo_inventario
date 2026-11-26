@@ -3,7 +3,7 @@ import { normalize } from './core.js';
 const equipment = ['brand','model','date','number','type'];
 const artwork = ['Autor','Título o descripción','date','Técnica','number'];
 const publication = ['Título','Autor o entidad','Editorial','date'];
-const document = ['Título o descripción','Emisor o autor','date','number'];
+const documentFields = ['Título o descripción','Emisor o autor','date','number'];
 const other = ['Nombre del objeto','date'];
 const groups = {
   'Oficina': {
@@ -32,8 +32,8 @@ const groups = {
     Correspondencia: ['Remitente','Destinatario','date'],
     Publicidad: ['Marca o anunciante','Producto o servicio','date','Medio'],
     'Recorte de prensa': ['Título o tema','Medio','date'],
-    'Documento histórico': [...document,'Clase de documento'],
-    'Otro material documental': document,
+    'Documento histórico': [...documentFields,'Clase de documento'],
+    'Otro material documental': documentFields,
   },
   'Museografía': {
     'Objeto histórico fechado': ['Nombre del objeto','date','Procedencia'],
@@ -124,7 +124,7 @@ export function createGuidedIntake({$, fillCombo, comboValue, markDirty}) {
       return;
     }
     const list = addChoices([...original.options].filter(option => option.value && option.value !== '__new__')
-      .map(option => [option.value,option.text]),comboValue(key),value => {
+      .map(option => [option.value,option.textContent]),comboValue(key),value => {
       const changed = comboValue(key) !== value;
       fillCombo(key,value);
       if (key === 'brand' && changed) fillCombo('model');
@@ -161,7 +161,7 @@ export function createGuidedIntake({$, fillCombo, comboValue, markDirty}) {
       const entries = group
         ? Object.keys(groups[group]).map(name=>[name,name])
         : [...$('#category-select').options].filter(option => option.value && option.value !== '__new__')
-          .map(option => [option.value,option.text]);
+          .map(option => [option.value,option.textContent]);
       const list = addChoices(entries,comboValue('category'),value => {
         if (comboValue('category') !== value) selectMaterial(value);
       });
