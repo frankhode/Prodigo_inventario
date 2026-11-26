@@ -885,11 +885,21 @@ bulkWorkflow=mountBulkWorkflow({
   onBatchCreated:async()=>{await refresh(true);},
   notify:toast
 });
-try {
-  db = connect(config);
-  if (!db) { $('#loading').hidden = true; $('#configuration').hidden = false; }
-  else if (hasInvitation) { showAuth(); signupMode(true); }
-  else if (await db.session()) {
-    try { await enterApp(); } catch (error) { showAuth(); $('#login-error').textContent = errorText(error); }
-  } else showAuth();
-} catch (error) { $('#loading').textContent = errorText(error); }
+async function start() {
+  try {
+    db = connect(config);
+    if (!db) { $('#loading').hidden = true; $('#configuration').hidden = false; }
+    else if (hasInvitation) { showAuth(); signupMode(true); }
+    else if (await db.session()) await enterApp();
+    else showAuth();
+  } catch (error) {
+    if (db) {
+      showAuth();
+      $('#login-error').textContent = errorText(error);
+    } else {
+      $('#loading-message').textContent = errorText(error);
+      $('#loading-retry').hidden = false;
+    }
+  }
+}
+start();

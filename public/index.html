@@ -8,7 +8,31 @@
 <link rel="stylesheet" href="./styles.css"><script src="./config.js"></script><script src="./app.js" type="module"></script>
 </head>
 <body>
-<div id="loading" class="loading" role="status">Abriendo Pródigo…</div>
+<div id="loading" class="loading">
+  <span id="loading-message" role="status">Abriendo Pródigo…</span>
+  <a id="loading-retry" class="button secondary" hidden>Volver a intentar</a>
+</div>
+<script>
+(function () {
+  var loading = document.getElementById('loading');
+  var message = document.getElementById('loading-message');
+  var retry = document.getElementById('loading-retry');
+  retry.addEventListener('click', function (event) {
+    event.preventDefault();
+    var url = new URL(window.location.href);
+    url.searchParams.set('recarga', Date.now());
+    window.location.replace(url.href);
+  });
+  retry.href = window.location.href;
+  window.setTimeout(function () {
+    if (loading.hidden) return;
+    if (message.textContent === 'Abriendo Pródigo…') {
+      message.textContent = 'Pródigo está tardando en abrir. Volvé a intentar con una conexión estable.';
+    }
+    retry.hidden = false;
+  }, 18000);
+})();
+</script>
 <section id="configuration" class="configuration" hidden><img src="./icon.svg" width="52" height="52" alt=""><p class="eyebrow">PRÓDIGO / INVENTARIO</p><h1>Preparando el inventario.</h1><p>Falta conectar esta app con su proyecto de Supabase.</p><p>Una vez configurado, vas a poder ingresar con tu usuario o correo y contraseña.</p><a class="button secondary" href="https://github.com/frankhode/Prodigo_inventario#configuraci%C3%B3n">Instrucciones de configuración</a></section>
 <section id="auth" class="auth" hidden>
 <div class="auth-story"><a class="wordmark" href="./"><img src="./icon.svg" alt="" width="42" height="42">pródigo<span>INVENTARIO</span></a><div><p class="eyebrow">OBJETOS CON HISTORIA</p><h1>Cada pieza,<br>en su lugar.</h1><p>Un registro para guardar lo que hace<br>único a cada objeto.</p></div><span class="auth-foot">FOTOGRAFIAR. REGISTRAR. CONSERVAR.</span></div>
