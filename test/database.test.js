@@ -463,5 +463,31 @@ test('Esquema PostgreSQL: permisos, identificadores y conflictos',async t => {
       await as(users[3]);
       await assert.rejects(next('Fotografía'),/No tenés acceso/);
     });
+    await t.test('Carga asistida conserva datos por material y permite omitir foto, marca y destino',async () => {
+      await db.exec('reset role');
+      for (const migration of ['202611250002_unlimited_gallery','202611260001_guided_intake']) {
+        await db.exec(await readFile(new URL(`../supabase/migrations/${migration}.sql`,import.meta.url),'utf8'));
+      }
+      await as(users[0]);
+      const id = randomUUID();
+      const v = {...values,category:'Libro',brand:'',model:'',destination:'',
+        guided_details:{group:'Material bibliográfico',fields:{Título:'Manual de prueba'}}};
+      const saved = (await save(id,0,v,null)).rows[0];
+      assert.equal(saved.code,'P001004');
+      assert.equal(saved.photo_path,null);
+      assert.equal(saved.destination,null);
+      assert.deepEqual(saved.guided_details,v.guided_details);
+      assert.equal((await save(id,0,v,null)).rows[0].id,id);
+      await assert.rejects(save(id,0,{...v,guided_details:{...v.guided_details,fields:{}}},null),/ya fue guardada/);
+      const path = await upload(users[0],id);
+      const edited = (await save(id,1,{...v,destination:'museo'},path)).rows[0];
+      assert.equal(edited.photo_path,path);
+      assert.equal(edited.destination,'museo');
+      const machineId = randomUUID();
+      const machine = (await save(machineId,0,{...values,brand:'',guided_details:{group:'Oficina',fields:{}}},null)).rows[0];
+      assert.equal(machine.model,values.model);
+      assert.ok(Number(machine.number)<1000);
+      assert.deepEqual((await db.query('select guided_details from public.inventory_items where id=$1',[id])).rows[0].guided_details,v.guided_details);
+    });
   } finally { await db.close(); }
 });

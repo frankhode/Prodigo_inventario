@@ -1,3 +1,4 @@
+import { createGuidedIntake } from './guided-intake.js';
 import { connect } from './data.js';
 import { destinations, normalize, title, validate, csv, exportRecord, photoFiles } from './core.js';
 import { compressPhoto, compressFrame } from './photos.js';
@@ -126,7 +127,7 @@ function visibleItems() {
       item.original_number,item.type,item.notes,item.original_filename,
       item.catalog_source?.collection_name,
       JSON.stringify(item.catalog_source?.record||{}),
-      destinations[item.destination]
+      destinations[item.destination], item.guided_details?.group, ...Object.values(item.guided_details?.fields ?? {})
     ].join(' ')).includes(query);
   });
   const sort=$('#sort').value;
@@ -171,9 +172,10 @@ function card(item) {
     :`Editar ${item.code}, ${title(item)}`);
   const picture=element('div','card-image'),img=element('img');
   img.alt=title(item);img.loading='lazy';
-  picture.append(cropThumbnail(img,item.photo_crop));
+  if (item.photo_path) picture.append(cropThumbnail(img,item.photo_crop));
+  else picture.append(element('span','card-no-photo','Sin foto'));
   picture.append(element('span',`label-chip ${unlinked?'unlinked':item.label_confirmed_at?'labeled':'pending'}`,label));
-  db.photoUrl(item.photo_path).then(url=>{
+  if (item.photo_path) db.photoUrl(item.photo_path).then(url=>{
     if(button.isConnected)img.src=url;
   }).catch(()=>{img.alt='Foto no disponible. Probá Actualizar.';});
   const body=element('div','card-body');
@@ -184,7 +186,7 @@ function card(item) {
       item.original_number&&`N.º ${item.original_number}`
     ].filter(Boolean).join(' · ')));
   const bottom=element('div','card-bottom');
-  bottom.append(element('span',`badge ${item.destination}`,destinations[item.destination]),
+  bottom.append(element('span',`badge ${item.destination}`,destinations[item.destination] || 'Sin destino'),
     element('span','card-edit',unlinked?'Abrir lote ↗':'Editar ficha ↗'));
   if(item.catalog_source?.collection_name)
     body.append(element('span','catalog-source-chip',item.catalog_source.collection_name));
@@ -253,8 +255,8 @@ function fillCombo(field,value = '') {
   const known = values.find(v => normalize(v) === normalize(value));
   select.value = known || (value ? '__new__' : ''); input.value = known ? '' : value; input.hidden = select.value !== '__new__';
   if (field === 'model') {
-    select.disabled = !comboValue('brand'); input.disabled = select.disabled;
-    $('#model-help').textContent = select.disabled ? 'Si conocés el modelo, volvé al paso anterior y completá la marca.' : '';
+    select.disabled = !state.current?.guided_details && !comboValue('brand'); input.disabled = select.disabled;
+    $('#model-help').textContent = select.disabled ? 'Elegí una marca para habilitar el modelo.' : '';
   }
 }
 for (const field of combos) {
@@ -270,6 +272,7 @@ for (const field of combos) {
     if (field === 'brand') fillCombo('model');
   });
 }
+const intake = createGuidedIntake({$,fillCombo,comboValue,markDirty:() => { state.dirty = true; }});
 function values() {
   return {category:comboValue('category'),brand:comboValue('brand'),model:comboValue('model'),type:comboValue('type'),
     manufacture_date:$('#manufacture-date').value.trim(),original_number:$('#original-number').value.trim(),destination:$('#item-form').elements.destination.value,notes:$('#notes').value.trim()};
@@ -464,18 +467,35 @@ async function openEditor(item = null) {
   state.dirty = false; $('#item-form').reset();
   for (const field of combos) fillCombo(field,item?.[field] || '');
   $('#manufacture-date').value = item?.manufacture_date || ''; $('#original-number').value = item?.original_number || ''; $('#notes').value = item?.notes || '';
-  if (item) $('#item-form').elements.destination.value = item.destination;
+  $('#destination-required').hidden = Boolean(item?.guided_details);
+  $('#clear-destination').hidden = !item?.guided_details;
+  if (item) $('#item-form').elements.destination.value = item.destination ?? '';
   else if(derivedPending) $('#item-form').elements.destination.value='museo';
   $('#editor-code').textContent = item?.code || '';
   $('#editor-code').hidden = !item;
   $('#editor').setAttribute('aria-label',item ? `Editar ${item.code}, ${title(item)}` : 'Ficha de inventario');
   $('#item-dates').textContent = item ? `Alta: ${new Date(item.created_at).toLocaleDateString('es-AR')} · Revisión ${item.revision}` : '';
-  $('#photo-stage').replaceChildren(element('span','',item ? 'Cargando foto…' : 'Una foto para reconocer el objeto.'));
+  $('#photo-stage').replaceChildren(element('span','',item?.photo_path ? 'Cargando foto…' : 'Sin foto'));
   $('#photo-status').textContent = 'La portada se usa en la grilla.';
   renderExtraPhotos();
   renderBatchReference();
+  const details = $('#guided-details');
+  details.replaceChildren();
+  details.hidden = !item?.guided_details;
+  if (item?.guided_details?.group) details.append(element('dt','','Grupo'),element('dd','',item.guided_details.group));
+  for (const [label,value] of Object.entries(item?.guided_details?.fields ?? {})) {
+    const input = element('input');
+    input.value = value;
+    input.maxLength = 240;
+    input.setAttribute('aria-label',label);
+    input.dataset.intakeField = label;
+    const cell = element('dd');
+    cell.append(input);
+    details.append(element('dt','',label),cell);
+  }
   $('#editor').showModal(); showForm();
-  if (item) {
+  intake.start(!item && !batchEditing && !derivedPending);
+  if (item?.photo_path) {
     try { const url = await db.photoUrl(item.photo_path); if ($('#editor').open && state.current?.id === item.id && state.photoPath === item.photo_path && !state.photo) showPhoto(url); }
     catch { $('#photo-status').textContent = 'No se pudo mostrar la foto. Podés conservarla o reemplazarla.'; }
   }
@@ -504,9 +524,13 @@ function busy(value) {
   state.busy = value;
   $$('#item-form button, #item-form input, #item-form select, #item-form textarea').forEach(control => control.disabled = value);
   updateExtraPhotoControls();
-  if (!value) { $('#model-select').disabled = !comboValue('brand'); $('#model-new').disabled = !comboValue('brand'); }
+  if (!value) { $('#model-select').disabled = !state.current?.guided_details && !comboValue('brand'); $('#model-new').disabled = $('#model-select').disabled; }
 }
 $('#new-item').addEventListener('click',() => openEditor()); $('#empty-new').addEventListener('click',() => openEditor());
+$('#clear-destination').addEventListener('click',() => {
+  $('#item-form').elements.destination.value = '';
+  state.dirty = true;
+});
 $('#item-form').addEventListener('input',event => {
   if (event.target !== $('#batch-is-object')) state.dirty = true;
 });
@@ -681,14 +705,24 @@ for (const input of [$('#camera-input'),$('#gallery-input')]) input.addEventList
 });
 $('#item-form').addEventListener('submit',async event => {
   event.preventDefault(); if (state.busy) return;
+  if (intake.active && !intake.reviewing) { intake.advance(); return; }
   let continueBatch = false;
   try {
+    const guided = intake.active || Boolean(state.current?.guided_details);
     for (const field of combos) {
-      if ($(`#${field}-select`).value === '__new__' && !comboValue(field)) throw Error('Escribí el nombre de la nueva opción o elegí otra del listado.');
+      if (!intake.active && $(`#${field}-select`).value === '__new__' && !comboValue(field)) throw Error('Escribí el nombre de la nueva opción o elegí otra del listado.');
     }
-    if (!state.photo && !state.photoPath) throw Error('Tomá o elegí una foto.');
-    if (!comboValue('category')) throw Error('Elegí el objeto.');
-    const record = {...validate(values()),photo_crop:state.crop}; busy(true); $('#next-step').textContent = 'Guardando…';
+    if (!guided && !state.photo && !state.photoPath) throw Error('Tomá o elegí una foto.');
+    const entered = values();
+    if (intake.active && !entered.category) entered.category = 'Sin clasificar';
+    const record = {...validate(entered,{guided}),photo_crop:state.crop};
+    if (intake.active) record.guided_details = intake.values();
+    else if (guided) record.guided_details = {
+      group:state.current.guided_details.group,
+      fields:Object.fromEntries($$('[data-intake-field]').map(input => [input.dataset.intakeField,input.value.trim()])),
+    };
+    if (!state.photo && !state.photoPath && state.gallery.length) throw Error('Elegí una de las fotos como principal.');
+    busy(true); $('#next-step').textContent = 'Guardando…';
     const saved = await db.save({id:state.draftId,revision:state.current?.revision || 0,values:record,photo:state.photo,photoPath:state.photoPath,previousPhotoPath:state.current?.photo_path,userId:state.user.id,
       gallery:state.gallery,previousExtraPhotos:state.current?.extra_photos});
     state.items = [...state.items.filter(i => i.id !== saved.id),saved];

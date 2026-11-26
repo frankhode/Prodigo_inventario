@@ -242,3 +242,17 @@
 #editor .dialog-bottom>.error{flex-basis:100%;max-width:none}
 #editor .dialog-actions{flex:1}#editor #next-step{width:100%}
 }
+
+#editor.guided-intake .wizard-body{display:flex;flex-direction:column;gap:16px;min-height:0}
+#guided-fields,#editor.guided-intake #photo-step{width:100%}
+#guided-fields h3{margin-bottom:12px}
+#guided-fields label{display:block;margin-top:10px}
+.guided-choices{display:grid;gap:8px}
+.guided-choices .button{justify-content:flex-start;text-align:left;white-space:normal;min-height:44px}
+.guided-choices .button[aria-pressed="true"]{border-color:var(--green);background:#edf1e7}
+#editor [hidden]{display:none!important}
+.card-no-photo{display:grid;place-items:center;height:100%;color:var(--muted);font-size:12px}
+#guided-details input{width:100%;min-width:0}
+#guided-fields label+.guided-choices{margin-top:10px;max-height:42dvh;overflow:auto}
+#editor.guided-intake .dialog-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+#editor.guided-intake #next-step{width:auto}
